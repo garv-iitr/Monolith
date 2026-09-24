@@ -1,5 +1,5 @@
 #include "control_memory.h"
-#include "isa.h"
+#include "isa_spec/isa.h"
 #include "microcode_routines.h"
 
 // ============================================================

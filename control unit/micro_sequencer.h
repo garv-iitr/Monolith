@@ -3,7 +3,7 @@
 
 #include <cstdint>
 #include "control_memory.h"
-#include "isa.h"
+#include "isa_spec/isa.h"
 
 // ============================================================
 // MicroSequencer: owns the microPC and decides the next

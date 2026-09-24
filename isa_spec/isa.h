@@ -1,10 +1,26 @@
 #ifndef ISA_H
 #define ISA_H
 
+// RISC201 shared ISA contract.
+//
+// Relocated here from control unit/isa.h (the PRD's shared isa_spec/ location).
+// The data word width is parameterized via RISC201_WORD_BITS (default 32, the
+// PRD's locked parameter); the instruction ENCODING stays the fixed 32-bit
+// SimpleRISC layout regardless of width.
+
 #include <cstdint>
+#include <type_traits>
 
+#ifndef RISC201_WORD_BITS
+#define RISC201_WORD_BITS 32
+#endif
 
-using Word = uint32_t;
+constexpr int kWordBits = RISC201_WORD_BITS;
+static_assert(kWordBits == 32 || kWordBits == 64,
+              "RISC201_WORD_BITS must be 32 or 64");
+
+using Word  = std::conditional_t<(kWordBits <= 32), std::uint32_t, std::uint64_t>;
+using Sword = std::conditional_t<(kWordBits <= 32), std::int32_t,  std::int64_t>;
 
 // -------------------- Opcodes (5-bit) --------------------
 enum Opcode : uint8_t {
@@ -51,13 +67,13 @@ inline uint8_t  get_rd(Word w)     { return (w >> 22) & 0xF;  }          // bits
 inline uint8_t  get_rs1(Word w)    { return (w >> 18) & 0xF;  }          // bits 21-18
 inline uint8_t  get_rs2(Word w)    { return (w >> 14) & 0xF;  }          // bits 17-14 (register format only)
 inline uint8_t  get_mod(Word w)    { return (w >> 16) & 0x3;  }          // bits 17-16 (immediate format only)
-inline int32_t  get_imm18(Word w)  {                                     // bits 15-0, sign-extended
-    int32_t v = w & 0x3FFFF;
+inline int32_t  get_imm18(Word w)  {                                     // bits 17-0, sign-extended
+    int32_t v = static_cast<int32_t>(w & 0x3FFFF);
     if (v & 0x20000) v |= ~0x3FFFF;   // sign-extend from bit 17
     return v;
 }
-inline int32_t  get_offset27(Word w) {                                  // bits 26-0, sign-extended
-    int32_t v = w & 0x7FFFFFF;
+inline int32_t  get_offset27(Word w) {                                   // bits 26-0, sign-extended
+    int32_t v = static_cast<int32_t>(w & 0x7FFFFFF);
     if (v & 0x4000000) v |= ~0x7FFFFFF;  // sign-extend from bit 26
     return v;
 }
@@ -77,7 +93,7 @@ inline Format format_of(uint8_t opcode) {
 }
 
 // -------------------- Register / special register counts --------------------
-constexpr int NUM_REGISTERS = 16;   // R0-R15
-constexpr int REG_WIDTH_BITS = 32;
+constexpr int NUM_REGISTERS  = 16;   // R0-R15
+constexpr int REG_WIDTH_BITS = kWordBits;
 
-#endif 
+#endif
