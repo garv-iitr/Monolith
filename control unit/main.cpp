@@ -1,6 +1,6 @@
 #include <iostream>
 #include <iomanip>
-#include "isa.h"
+#include "isa_spec/isa.h"
 #include "control_memory.h"
 #include "micro_sequencer.h"
 #include "microcode_routines.h"

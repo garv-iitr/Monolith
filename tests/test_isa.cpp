@@ -1,64 +1,68 @@
 #include <cstdint>
-#include <string>
 
 #include "isa_spec/isa.h"
 #include "tests/test_framework.h"
 
-using namespace risc201;
-
 RISC201_TEST(isa_width_constants) {
   CHECK(kWordBits == RISC201_WORD_BITS);
-  CHECK(kWordBytes * 8 == kWordBits);
-  CHECK(kNumRegs == 16);
-  CHECK(kNumOpcodes == 21);
-  CHECK(kInstrBits == 32);
-  static_assert(kWordBits == 32 || kWordBits == 64, "width must be 32 or 64");
+  CHECK(kWordBits == 32 || kWordBits == 64);
+  CHECK(NUM_REGISTERS == 16);
+  CHECK(REG_WIDTH_BITS == kWordBits);
+  CHECK(static_cast<int>(sizeof(Word)) * 8 == kWordBits);
 }
 
-RISC201_TEST(isa_sign_extend) {
-  CHECK(sign_extend<16>(0x0001) == 1);
-  CHECK(sign_extend<16>(0x7FFF) == 32767);
-  CHECK(sign_extend<16>(0x8000) == -32768);
-  CHECK(sign_extend<16>(0xFFFF) == -1);
+RISC201_TEST(isa_opcode_values) {
+  CHECK(OP_ADD == 0);
+  CHECK(OP_SUB == 1);
+  CHECK(OP_CMP == 5);
+  CHECK(OP_RET == 20);
+  CHECK(static_cast<int>(OP_BEQ) == 16);
 }
 
-RISC201_TEST(isa_expand_immediate) {
-  CHECK(expand_immediate(kModDefault, 0x0003) == 3);
-  CHECK(expand_immediate(kModDefault, 0xFFFE) == static_cast<word_t>(-2));
-  CHECK(expand_immediate(kModUnsigned, 0xFEAB) == 0xFEAB);
-  CHECK(expand_immediate(kModHigh, 0xFEAB) ==
-        static_cast<word_t>(std::uint64_t{0xFEAB} << 16));
-}
-
-// Worked encodings straight from the SimpleRISC chapter.
+// Worked encodings from the SimpleRISC chapter.
 RISC201_TEST(isa_field_layout) {
-  const instr_t sub = 0x0C480003u;  // sub r1, r2, 3
-  CHECK(field(sub, kOpShift, kOpMask) == static_cast<instr_t>(Op::SUB));
-  CHECK(field(sub, kIBitShift, kIMask) == 1);
-  CHECK(field(sub, kRdShift, kRegMask) == 1);
-  CHECK(field(sub, kRs1Shift, kRegMask) == 2);
-  CHECK(field(sub, kConstShift, kConstMask) == 3);
+  const Word sub = 0x0C480003u;  // sub r1, r2, 3
+  CHECK(get_opcode(sub) == OP_SUB);
+  CHECK(get_ibit(sub) == 1);
+  CHECK(get_rd(sub) == 1);
+  CHECK(get_rs1(sub) == 2);
+  CHECK(get_mod(sub) == 0);
 
-  const instr_t st = 0x7E080014u;  // st r8, 20[r2]
-  CHECK(field(st, kOpShift, kOpMask) == static_cast<instr_t>(Op::ST));
-  CHECK(field(st, kIBitShift, kIMask) == 1);
-  CHECK(field(st, kRdShift, kRegMask) == 8);
-  CHECK(field(st, kRs1Shift, kRegMask) == 2);
-  CHECK(field(st, kConstShift, kConstMask) == 20);
+  const Word st = 0x7E080014u;  // st r8, 20[r2]
+  CHECK(get_opcode(st) == OP_ST);
+  CHECK(get_ibit(st) == 1);
+  CHECK(get_rd(st) == 8);
+  CHECK(get_rs1(st) == 2);
 }
 
-RISC201_TEST(isa_opcode_metadata) {
-  CHECK(std::string(mnemonic(Op::ADD)) == "add");
-  CHECK(std::string(mnemonic(Op::ST)) == "st");
-  CHECK(std::string(mnemonic(Op::RET)) == "ret");
+RISC201_TEST(isa_register_format) {
+  // add r5, r6, r7 -> op=ADD, I=0, rd=5, rs1=6, rs2=7
+  const Word w = (static_cast<Word>(OP_ADD) << 27) | (0u << 26) | (5u << 22) |
+                 (6u << 18) | (7u << 14);
+  CHECK(get_opcode(w) == OP_ADD);
+  CHECK(get_ibit(w) == 0);
+  CHECK(get_rd(w) == 5);
+  CHECK(get_rs1(w) == 6);
+  CHECK(get_rs2(w) == 7);
+}
 
-  CHECK(is_branch_format(Op::B));
-  CHECK(is_branch_format(Op::BEQ));
-  CHECK(is_branch_format(Op::RET));
-  CHECK(is_branch_format(Op::NOP));
-  CHECK(!is_branch_format(Op::ADD));
-  CHECK(!is_branch_format(Op::LD));
+RISC201_TEST(isa_sign_extended_fields) {
+  CHECK(get_imm18(0x00000003u) == 3);
+  CHECK(get_imm18(0x0003FFFFu) == -1);
+  CHECK(get_offset27(0x07FFFFFFu) == -1);
 
-  CHECK(kStackPointer == Reg::R14);
-  CHECK(kReturnAddress == Reg::R15);
+  // `b` with offset -1
+  const Word b = (static_cast<Word>(OP_B) << 27) | 0x07FFFFFFu;
+  CHECK(get_opcode(b) == OP_B);
+  CHECK(get_offset27(b) == -1);
+}
+
+RISC201_TEST(isa_format_of) {
+  CHECK(format_of(OP_NOP) == Format::ZERO_ADDR);
+  CHECK(format_of(OP_RET) == Format::ZERO_ADDR);
+  CHECK(format_of(OP_B) == Format::BRANCH);
+  CHECK(format_of(OP_BEQ) == Format::BRANCH);
+  CHECK(format_of(OP_CALL) == Format::BRANCH);
+  CHECK(format_of(OP_ADD) == Format::REGISTER);
+  CHECK(format_of(OP_LD) == Format::REGISTER);
 }

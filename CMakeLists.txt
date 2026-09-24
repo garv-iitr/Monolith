@@ -10,15 +10,42 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 # ---------------------------------------------------------------------------
-# Parameters (see isa_spec/isa.h once it lands)
+# Parameters
+#   RISC201_WORD_BITS selects the data word width used by isa_spec/isa.h.
+#   Default 32 (the PRD's locked parameter); 64 is also supported.
 # ---------------------------------------------------------------------------
-set(RISC201_WORD_BITS 64 CACHE STRING "RISC201 data word width in bits (32 or 64)")
+set(RISC201_WORD_BITS 32 CACHE STRING "RISC201 data word width in bits (32 or 64)")
 set_property(CACHE RISC201_WORD_BITS PROPERTY STRINGS 32 64)
 
 option(RISC201_TUI "Build the FTXUI terminal-UI debugger (fetches FTXUI)" ON)
 
 # ---------------------------------------------------------------------------
-# Source lists. These grow one implementation step at a time.
+# risc201_config : shared include roots + width definition
+#   - repo root       -> isa_spec/isa.h
+#   - control unit/   -> Garv's control-unit headers
+# ---------------------------------------------------------------------------
+add_library(risc201_config INTERFACE)
+target_include_directories(risc201_config INTERFACE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  "${CMAKE_CURRENT_SOURCE_DIR}/control unit")
+target_compile_definitions(risc201_config INTERFACE
+  RISC201_WORD_BITS=${RISC201_WORD_BITS})
+
+# ---------------------------------------------------------------------------
+# risc201_cu : Garv's microprogrammed control unit
+# ---------------------------------------------------------------------------
+add_library(risc201_cu STATIC
+  "control unit/microcode_routines.cpp")
+target_link_libraries(risc201_cu PUBLIC risc201_config)
+target_compile_options(risc201_cu PRIVATE -Wall -Wextra)
+
+# Garv's control-unit walkthrough (owns its own main()).
+add_executable(risc201-cu-demo "control unit/main.cpp")
+target_link_libraries(risc201-cu-demo PRIVATE risc201_cu)
+target_compile_options(risc201-cu-demo PRIVATE -Wall -Wextra)
+
+# ---------------------------------------------------------------------------
+# risc201-sim : the simulator binary (core sources grow one step at a time)
 # ---------------------------------------------------------------------------
 set(RISC201_CORE_SOURCES
   # simulator_core/core/memory.cpp          (Step 2)
@@ -33,20 +60,11 @@ set(RISC201_UI_SOURCES
   # simulator_core/ui/tui.cpp               (Step 9)
 )
 
-set(RISC201_TEST_SOURCES
-  # tests/test_decoder.cpp                  (Step 3)
-)
-
-# ---------------------------------------------------------------------------
-# risc201-sim : the simulator binary
-# ---------------------------------------------------------------------------
 add_executable(risc201-sim
   simulator_core/main.cpp
   ${RISC201_CORE_SOURCES}
-  ${RISC201_UI_SOURCES}
-)
-target_include_directories(risc201-sim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_definitions(risc201-sim PRIVATE RISC201_WORD_BITS=${RISC201_WORD_BITS})
+  ${RISC201_UI_SOURCES})
+target_link_libraries(risc201-sim PRIVATE risc201_cu)
 target_compile_options(risc201-sim PRIVATE -Wall -Wextra)
 
 # FTXUI is only fetched once the TUI source exists, so scaffolding needs no
@@ -67,13 +85,12 @@ endif()
 # ---------------------------------------------------------------------------
 # risc201-tests : lightweight assert-based unit tests
 # ---------------------------------------------------------------------------
+set(RISC201_TEST_SOURCES
+  tests/test_isa.cpp)
 add_executable(risc201-tests
   tests/test_main.cpp
-  ${RISC201_CORE_SOURCES}
-  ${RISC201_TEST_SOURCES}
-)
-target_include_directories(risc201-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_definitions(risc201-tests PRIVATE RISC201_WORD_BITS=${RISC201_WORD_BITS})
+  ${RISC201_TEST_SOURCES})
+target_link_libraries(risc201-tests PRIVATE risc201_config)
 target_compile_options(risc201-tests PRIVATE -Wall -Wextra)
 
 enable_testing()
