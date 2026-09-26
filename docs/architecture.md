@@ -49,6 +49,14 @@ docs/                       PRD, isa_spec, architecture, tui
   2 = `h` shift-left-16. The decoder derives the operand from `get_mod` + the low
   16 bits and deliberately does **not** call `get_imm18` (its 18-bit
   sign-extension folds in the `mod` bits).
+- **`Alu`** (`alu/alu.h`): `AluResult execute(ALUOp op, Word a, Word b)`; `a` = first
+  source, `b` = second source (rs2 or immediate). `SimpleAlu` is a placeholder
+  (Atharva owns the real ALU). Result carries `value`, `zero`, `negative`, `carry`,
+  `overflow`; after `CMP` the CPU maps `E = zero`, `GT = !negative && !zero`.
+  `DIV`/`MOD` by zero throws `RuntimeException(DIV_BY_ZERO)`. `NOT` complements
+  operand B (SimpleRISC's 2-address `not rd, src` keeps its source in the
+  second-operand field); `PASS_A` returns `a`. Operand types come from Garv's
+  `ALUOp` in `control unit/control_signals.h`.
 
 ## Control unit (Garv)
 
@@ -111,3 +119,6 @@ Targets: `risc201-sim`, `risc201-cu-demo`, `risc201-tests`, plus the
    before Step 6/7.
 3. **`get_imm18` vs `get_mod`** semantics (see `docs/isa_spec.md`).
 4. **Promote `Flags` + exception codes** into `isa_spec/isa.h` at Milestone 0.
+5. **`mov` pass-through.** `ALUOp` only has `PASS_A`, but `mov`'s source lives in
+   the second-operand field; either add `PASS_B` to `ALUOp`, or route `mov`'s
+   source onto the A bus when wiring the datapath (Step 6).
