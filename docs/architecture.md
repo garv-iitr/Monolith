@@ -41,6 +41,14 @@ docs/                       PRD, isa_spec, architecture, tui
 - **`RuntimeException`** (`simulator_core/core/exception.h`): `{ ExceptionCode code;
   uint64_t address; }`. Exception codes: NONE, DIV_BY_ZERO, BAD_MEM_ACCESS,
   MISALIGNED_ACCESS, STACK_OVERFLOW, STACK_UNDERFLOW, ILLEGAL_INSTRUCTION.
+- **`decode`** (`simulator_core/core/decoder.h`): `DecodedInstruction decode(Word)`
+  fills `opcode`, `format`, `is_immediate`, `rd`, `rs1`, `rs2`, `mod`, `imm16`,
+  `immediate`, `branch_offset` from Garv's accessors (`format_of` classifies the
+  opcode; the I-bit picks register vs immediate). `expand_immediate(mod, raw16)`
+  implements the SimpleRISC modifiers: 0 = sign-extend, 1 = `u` zero-extend,
+  2 = `h` shift-left-16. The decoder derives the operand from `get_mod` + the low
+  16 bits and deliberately does **not** call `get_imm18` (its 18-bit
+  sign-extension folds in the `mod` bits).
 
 ## Control unit (Garv)
 
