@@ -1,13 +1,6 @@
 #ifndef ISA_H
 #define ISA_H
 
-// RISC201 shared ISA contract.
-//
-// Relocated here from control unit/isa.h (the PRD's shared isa_spec/ location).
-// The data word width is parameterized via RISC201_WORD_BITS (default 32, the
-// PRD's locked parameter); the instruction ENCODING stays the fixed 32-bit
-// SimpleRISC layout regardless of width.
-
 #include <cstdint>
 #include <type_traits>
 
@@ -22,7 +15,6 @@ static_assert(kWordBits == 32 || kWordBits == 64,
 using Word  = std::conditional_t<(kWordBits <= 32), std::uint32_t, std::uint64_t>;
 using Sword = std::conditional_t<(kWordBits <= 32), std::int32_t,  std::int64_t>;
 
-// -------------------- Opcodes (5-bit) --------------------
 enum Opcode : uint8_t {
     OP_ADD  = 0b00000,
     OP_SUB  = 0b00001,
@@ -47,38 +39,30 @@ enum Opcode : uint8_t {
     OP_RET  = 0b10100
 };
 
-// -------------------- Instruction formats --------------------
-// 0-address:   opcode[5]                              (nop, ret)
-// Branch:      opcode[5] | offset[27]                 (b, beq, bgt, call)
-// Register:    opcode[5] | I=0[1] | rd[4] | rs1[4] | rs2[4]
-// Immediate:   opcode[5] | I=1[1] | rd[4] | rs1[4] | mod[2] | imm[18]
-
 enum class Format {
-    ZERO_ADDR,   // nop, ret
-    BRANCH,      // b, beq, bgt, call
-    REGISTER,    // I-bit = 0
-    IMMEDIATE    // I-bit = 1
+    ZERO_ADDR,
+    BRANCH,
+    REGISTER,
+    IMMEDIATE
 };
 
-// -------------------- Field extraction --------------------
-inline uint8_t  get_opcode(Word w) { return (w >> 27) & 0x1F; }          // bits 31-27
-inline uint8_t  get_ibit(Word w)   { return (w >> 26) & 0x1;  }          // bit 26 (R/I formats only)
-inline uint8_t  get_rd(Word w)     { return (w >> 22) & 0xF;  }          // bits 25-22
-inline uint8_t  get_rs1(Word w)    { return (w >> 18) & 0xF;  }          // bits 21-18
-inline uint8_t  get_rs2(Word w)    { return (w >> 14) & 0xF;  }          // bits 17-14 (register format only)
-inline uint8_t  get_mod(Word w)    { return (w >> 16) & 0x3;  }          // bits 17-16 (immediate format only)
-inline int32_t  get_imm18(Word w)  {                                     // bits 17-0, sign-extended
+inline uint8_t  get_opcode(Word w) { return (w >> 27) & 0x1F; }
+inline uint8_t  get_ibit(Word w)   { return (w >> 26) & 0x1;  }
+inline uint8_t  get_rd(Word w)     { return (w >> 22) & 0xF;  }
+inline uint8_t  get_rs1(Word w)    { return (w >> 18) & 0xF;  }
+inline uint8_t  get_rs2(Word w)    { return (w >> 14) & 0xF;  }
+inline uint8_t  get_mod(Word w)    { return (w >> 16) & 0x3;  }
+inline int32_t  get_imm18(Word w) {
     int32_t v = static_cast<int32_t>(w & 0x3FFFF);
-    if (v & 0x20000) v |= ~0x3FFFF;   // sign-extend from bit 17
+    if (v & 0x20000) v |= ~0x3FFFF;
     return v;
 }
-inline int32_t  get_offset27(Word w) {                                   // bits 26-0, sign-extended
+inline int32_t  get_offset27(Word w) {
     int32_t v = static_cast<int32_t>(w & 0x7FFFFFF);
-    if (v & 0x4000000) v |= ~0x7FFFFFF;  // sign-extend from bit 26
+    if (v & 0x4000000) v |= ~0x7FFFFFF;
     return v;
 }
 
-// -------------------- Helper: which format does this opcode use --------------------
 inline Format format_of(uint8_t opcode) {
     switch (opcode) {
         case OP_NOP: case OP_RET:
@@ -86,14 +70,11 @@ inline Format format_of(uint8_t opcode) {
         case OP_BEQ: case OP_BGT: case OP_B: case OP_CALL:
             return Format::BRANCH;
         default:
-            // Register vs Immediate is decided at runtime by the I-bit,
-            // not by opcode alone, for all remaining instructions.
-            return Format::REGISTER; // caller should still check get_ibit()
+            return Format::REGISTER;
     }
 }
 
-// -------------------- Register / special register counts --------------------
-constexpr int NUM_REGISTERS  = 16;   // R0-R15
+constexpr int NUM_REGISTERS  = 16;
 constexpr int REG_WIDTH_BITS = kWordBits;
 
 #endif
