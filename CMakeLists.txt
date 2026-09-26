@@ -32,7 +32,8 @@ target_compile_options(risc201-cu-demo PRIVATE -Wall -Wextra)
 
 add_library(risc201_core STATIC
   simulator_core/core/memory.cpp
-  simulator_core/core/register_file.cpp)
+  simulator_core/core/register_file.cpp
+  simulator_core/core/decoder.cpp)
 target_link_libraries(risc201_core PUBLIC risc201_config)
 target_compile_options(risc201_core PRIVATE -Wall -Wextra)
 
@@ -57,7 +58,8 @@ add_executable(risc201-tests
   tests/test_main.cpp
   tests/test_isa.cpp
   tests/test_memory.cpp
-  tests/test_register_file.cpp)
+  tests/test_register_file.cpp
+  tests/test_decoder.cpp)
 target_link_libraries(risc201-tests PRIVATE risc201_core)
 target_compile_options(risc201-tests PRIVATE -Wall -Wextra)
 
