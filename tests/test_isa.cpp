@@ -19,16 +19,15 @@ RISC201_TEST(isa_opcode_values) {
   CHECK(static_cast<int>(OP_BEQ) == 16);
 }
 
-// Worked encodings from the SimpleRISC chapter.
 RISC201_TEST(isa_field_layout) {
-  const Word sub = 0x0C480003u;  // sub r1, r2, 3
+  const Word sub = 0x0C480003u;
   CHECK(get_opcode(sub) == OP_SUB);
   CHECK(get_ibit(sub) == 1);
   CHECK(get_rd(sub) == 1);
   CHECK(get_rs1(sub) == 2);
   CHECK(get_mod(sub) == 0);
 
-  const Word st = 0x7E080014u;  // st r8, 20[r2]
+  const Word st = 0x7E080014u;
   CHECK(get_opcode(st) == OP_ST);
   CHECK(get_ibit(st) == 1);
   CHECK(get_rd(st) == 8);
@@ -36,7 +35,6 @@ RISC201_TEST(isa_field_layout) {
 }
 
 RISC201_TEST(isa_register_format) {
-  // add r5, r6, r7 -> op=ADD, I=0, rd=5, rs1=6, rs2=7
   const Word w = (static_cast<Word>(OP_ADD) << 27) | (0u << 26) | (5u << 22) |
                  (6u << 18) | (7u << 14);
   CHECK(get_opcode(w) == OP_ADD);
@@ -51,7 +49,6 @@ RISC201_TEST(isa_sign_extended_fields) {
   CHECK(get_imm18(0x0003FFFFu) == -1);
   CHECK(get_offset27(0x07FFFFFFu) == -1);
 
-  // `b` with offset -1
   const Word b = (static_cast<Word>(OP_B) << 27) | 0x07FFFFFFu;
   CHECK(get_opcode(b) == OP_B);
   CHECK(get_offset27(b) == -1);

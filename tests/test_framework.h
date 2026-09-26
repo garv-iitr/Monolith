@@ -28,7 +28,7 @@ inline bool register_test(const std::string& name, std::function<void()> fn) {
   return true;
 }
 
-}  // namespace risc201_test
+}
 
 #define RISC201_TEST(name)                                                     \
   static void name();                                                          \

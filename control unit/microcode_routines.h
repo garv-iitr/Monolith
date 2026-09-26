@@ -5,4 +5,4 @@
 
 ControlMemory build_control_memory();
 
-#endif // MICROCODE_ROUTINES_H
+#endif

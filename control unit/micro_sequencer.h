@@ -5,12 +5,6 @@
 #include "control_memory.h"
 #include "isa_spec/isa.h"
 
-// ============================================================
-// MicroSequencer: owns the microPC and decides the next
-// microaddress each cycle, based on the current
-// microinstruction's NextMicroAddr field.
-// ============================================================
-
 class MicroSequencer {
 public:
     explicit MicroSequencer(const ControlMemory& cm, uint16_t fetch_addr = 0)
@@ -20,8 +14,6 @@ public:
 
     const Microinstruction& current() const { return cm_.at(micro_pc_); }
 
-    // Advance the microPC. `opcode` is needed for DISPATCH,
-    // `branch_taken` is needed for BRANCH_COND.
     void advance(uint8_t opcode, bool branch_taken = false) {
         const auto& mi = cm_.at(micro_pc_);
         switch (mi.signals.next_addr_mode) {
@@ -49,4 +41,4 @@ private:
     uint16_t micro_pc_;
 };
 
-#endif // MICRO_SEQUENCER_H
+#endif
