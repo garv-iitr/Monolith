@@ -1,7 +1,7 @@
 #include <cstdio>
 
 #ifndef RISC201_WORD_BITS
-#define RISC201_WORD_BITS 64
+#define RISC201_WORD_BITS 32
 #endif
 
 int main(int argc, char** argv) {
