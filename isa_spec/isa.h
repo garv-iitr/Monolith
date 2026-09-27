@@ -93,7 +93,9 @@ enum Opcode : uint8_t {
 // I-type:  opcode(6) | mode(2)      | rd/rt(4)  | rs(4) | imm(16)
 // SH-type: opcode(6) | mode(2)=00   | rd(4)     | rs(4) | shamt(5) | unused(11)
 // BR-type: opcode(6) | offset(26, signed, PC-relative)
-// Z-type:  opcode(6) | unused(26)                              -- zero-operand instructions
+//          -- also covers zero-operand instructions (nop, ret, halt,
+//             exit, leave), which simply leave offset unused/zero,
+//             per the official PRD. (No separate zero-address format.)
 // FP-type: 3 sub-shapes (reg-only, load/store, GPR-transfer) -- see get_fp_* helpers
 //
 // mode(2) doubles as the R/I format selector for shared-opcode
@@ -107,8 +109,7 @@ enum class Format {
     R,       // register-operand ALU/data/system instructions
     I,       // immediate-operand instructions
     SH,      // shift instructions
-    BR,      // branches / call (has a real offset)
-    ZERO,    // zero-operand instructions (nop, ret, halt, exit, leave)
+    BR,      // branches / call / zero-operand instructions (unused offset)
     FP       // floating-point family (3 sub-shapes)
 };
 
@@ -121,10 +122,8 @@ inline uint8_t get_r_rd(Word w)   { return (w >> 20) & 0xF; }    // bits 23-20
 inline uint8_t get_r_rs(Word w)   { return (w >> 16) & 0xF; }    // bits 19-16
 inline uint8_t get_r_rt(Word w)   { return (w >> 12) & 0xF; }    // bits 15-12
 inline uint8_t get_r_cond(Word w) { return (w >> 9)  & 0x7; }    // bits 11-9
-// NOTE: exact semantic mapping of cond's 3-bit value for CSEL is
-// still unconfirmed with the team (does it reuse BEQ/BNE/BGT/BLT's
-// condition scheme, or is it independent?). Extraction is safe;
-// interpretation in microcode is a flagged TODO until confirmed.
+// Interpreted via the Cond enum + eval_cond() below (default mapping,
+// reusing branch condition semantics — see note there).
 
 // -------------------- I-type fields --------------------
 inline uint8_t get_i_rd(Word w)    { return (w >> 20) & 0xF; }   // bits 23-20 (rd/rt, shared slot)
@@ -170,15 +169,14 @@ inline uint8_t get_fpxfer_fpr(Word w) { return (w >> 18) & 0xF; } // bits 21-18
 // done separately; it does not read mode itself.
 inline Format format_of(uint8_t opcode) {
     switch (opcode) {
-        case OP_NOP: case OP_RET: case OP_HALT: case OP_EXIT: case OP_LEAVE:
-            return Format::ZERO;
-
         case OP_LSL: case OP_LSR: case OP_ASR:
             return Format::SH;
 
         case OP_B: case OP_BEQ: case OP_BNE: case OP_BGT: case OP_BLT:
         case OP_CALL: case OP_CALLCHK: case OP_BIF: case OP_SKIP:
         case OP_BC1T: case OP_BC1F:
+        case OP_NOP: case OP_RET: case OP_HALT: case OP_EXIT: case OP_LEAVE:
+            // zero-operand instructions are BR-type with offset unused/zero
             return Format::BR;
 
         case OP_FADD: case OP_FSUB: case OP_FMUL: case OP_FDIV: case OP_FCMP:
@@ -208,9 +206,8 @@ constexpr int REG_SWAP = 13;  // R13 — Swap
 constexpr int REG_SP   = 14;  // R14 — Stack Pointer
 constexpr int REG_RA   = 15;  // R15 — Return Address
 
-// -------------------- Condition codes (for branches) --------------------
+// -------------------- Condition codes (for branches, and CSEL) --------------------
 // BEQ: Z==1 | BNE: Z==0 | BGT: N==0 && Z==0 | BLT: N==1
-// CSEL's cond(3) field: mapping to these NOT YET CONFIRMED with team.
 struct Flags {
     bool Z = false;  // zero
     bool N = false;  // negative
@@ -218,9 +215,33 @@ struct Flags {
     bool V = false;  // overflow
 };
 
-// FCC — 1-bit float condition code, set by FCMP/C.EQ.S/C.LE.S/C.LT.S,
-// read by BC1T/BC1F. Exact set of FP instructions that write it beyond
-// these four is not yet confirmed with the team.
+// CSEL's cond(3) field: DEFAULT semantics adopted (reuses the branch
+// condition scheme above), NOT yet explicitly confirmed by the team —
+// flag this in Milestone 0 discussion before the shared isa.h freezes.
+// Values 4-7 are reserved/undefined under this default.
+enum class Cond : uint8_t {
+    EQ = 0b000,  // Z==1            (matches BEQ)
+    NE = 0b001,  // Z==0            (matches BNE)
+    GT = 0b010,  // N==0 && Z==0    (matches BGT)
+    LT = 0b011   // N==1            (matches BLT)
+    // 0b100-0b111 reserved
+};
+
+inline bool eval_cond(Cond c, const Flags& f) {
+    switch (c) {
+        case Cond::EQ: return f.Z;
+        case Cond::NE: return !f.Z;
+        case Cond::GT: return !f.N && !f.Z;
+        case Cond::LT: return f.N;
+        default:       return false;  // reserved values: default to not-taken
+    }
+}
+
+// FCC — 1-bit float condition code. Write-set RESOLVED from the PRD's
+// own instruction operation descriptions: only FCMP, C.EQ.S, C.LE.S,
+// and C.LT.S are described as comparison/flag-producing FP ops. No
+// other FP instruction (FADD/FSUB/FMUL/FDIV/ABS.S/NEG.S/MOV.S/
+// CVT.W.S/CVT.S.W/L.S/S.S/MFC1/MTC1) writes it. Read by BC1T/BC1F.
 using FCC = bool;
 
 #endif // ISA_H
