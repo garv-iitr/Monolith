@@ -22,7 +22,15 @@ target_compile_definitions(risc201_config INTERFACE
   RISC201_WORD_BITS=${RISC201_WORD_BITS})
 
 add_library(risc201_cu STATIC
-  "control unit/microcode_routines.cpp")
+  "control unit/common/internal_registers.cpp"
+  "control unit/datapath/datapath.cpp"
+  "control unit/datapath/alu_unit.cpp"
+  "control unit/datapath/memory_unit.cpp"
+  "control unit/datapath/fpu_unit.cpp"
+  "control unit/microcode/microcode_program.cpp"
+  "control unit/microcode/h_assembler.cpp"
+  "control unit/microcode/v_assembler.cpp"
+  "control unit/vertical/v_decoder.cpp")
 target_link_libraries(risc201_cu PUBLIC risc201_config)
 target_compile_options(risc201_cu PRIVATE -Wall -Wextra)
 
