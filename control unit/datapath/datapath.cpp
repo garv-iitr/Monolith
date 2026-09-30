@@ -7,7 +7,6 @@ Datapath::Datapath(std::size_t mem_words) : mem(mem_words) {}
 void Datapath::reset() {
   regs.reset();
   rf.reset();
-  fpu.reset();
   mem.reset();
   halted = false;
   halt_reason = "";
@@ -44,12 +43,12 @@ void Datapath::execute(const ControlSignals& sig, Word muimm) {
     if (sig.reads(r)) next.set(r, bus.read_bus);
   }
 
-  // 6. Functional units (they read the freshly-latched inputs).
+  // 6. Functional units owned by this module (they read the freshly-latched
+  //    inputs).  ALU / FPU / memory-check args are emitted on the bus for
+  //    Atharva's and Paraas's units; they latch their results from the shared
+  //    internal registers at integration time.
   rf.tick(next, sig, next);
-  alu.tick(next, sig, next);
   mem.tick(next, sig, next);
-  fpu.tick(next, sig, next);
-  memchk.tick(next, sig, next, mem.words());
 
   regs = next;
 }

@@ -16,6 +16,11 @@
 // Latched inputs are visible to the units in the *same* cycle, which is what
 // lets the microcode fuse a register transfer with a functional-unit op
 // (e.g. "mmov B, regVal, <add>").
+//
+// Units owned by this module: decode, register file, data memory.  The ALU,
+// FPU and memory-check args are emitted on the bus as a contract for
+// Atharva's and Paraas's units, which latch their results from the shared
+// internal registers at integration time.
 // ============================================================================
 
 #include <cstddef>
@@ -23,10 +28,7 @@
 #include "common/control_signals.h"
 #include "common/internal_registers.h"
 #include "common/shared_bus.h"
-#include "datapath/alu_unit.h"
 #include "datapath/decode_unit.h"
-#include "datapath/fpu_unit.h"
-#include "datapath/memory_check_unit.h"
 #include "datapath/memory_unit.h"
 #include "datapath/register_file_unit.h"
 #include "isa_spec/isa.h"
@@ -40,10 +42,7 @@ class Datapath {
 
   DecodeUnit decode;
   RegisterFileUnit rf;
-  AluUnit alu;
   MemoryUnit mem;
-  FpuUnit fpu;
-  MemoryCheckUnit memchk;
 
   StageLayout layout = StageLayout::SIX_STAGE;
   bool halted = false;

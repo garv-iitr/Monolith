@@ -41,16 +41,23 @@ on it, so the datapath and execute unit are shared.
   and memory-check (`memChkAddr/memChkStatus`) extensions. `get`/`set` give the
   width-agnostic access used by `mmov`.
 
-### Functional units (`datapath/`)
+### Functional units
 
-| Unit | File | Job |
+This module executes the units it owns; for the others it only emits args on
+the bus (the contract lives in `common/control_signals.h`):
+
+| Unit | File | Owner |
 | --- | --- | --- |
-| decode | `decode_unit.h` | combinational `ir` -> `I,rd,rs1,rs2,immx,branchTarget` |
-| register file | `register_file_unit.h` | 16 GPRs, `regSrc/regData/regVal`, read/write |
-| ALU | `alu_unit.h/.cpp` | `A,B -> aluResult` + Z/N/C/V |
-| memory | `memory_unit.h/.cpp` | `mar/mdr/ldResult`, byte-addressed word memory |
-| FPU | `fpu_unit.h/.cpp` | 16 FPRs + FP arithmetic, `fcmp` flags |
-| memory check | `memory_check_unit.h` | presence/alignment check -> `memChkStatus` (6-stage) |
+| decode | `datapath/decode_unit.h` | control unit (Garv) |
+| register file | `datapath/register_file_unit.h` | control unit (Garv) |
+| memory | `datapath/memory_unit.h/.cpp` | control unit (Garv) |
+| ALU | -- (`AluOp` args) | Atharva (`alu/`) |
+| FPU | -- (`FpuOp` args) | Atharva |
+| memory check | -- (`MemChkOp` args) | Paraas (`memory_safety/`) |
+
+The ALU/FPU/memory-check units latch their results from the shared internal
+registers (`A/B/aluResult`, `fpSrc/fpData/...`, `memChkAddr/memChkStatus`) when
+their implementations are integrated.
 
 `datapath/datapath.h/.cpp` is the **execute unit**: one `execute()` is one
 micro-cycle. Inputs latched this cycle are visible to the units in the *same*
@@ -107,7 +114,8 @@ A micro-step is tagged with a `StageClass`; the concrete stage name comes from
 
 So the 4-stage layout merges IF with OF; the 6-stage layout exposes a dedicated
 **MEMCHK** stage that validates the effective address (bounds + word alignment)
-before the memory access. `memchk.enabled`/`trap_on_fail` gate the checker.
+before the memory access. The checker itself is Paraas's memory-check unit; the
+microcode issues `MemChkOp::CHECK` args and reads the latched `memChkStatus`.
 
 ## 6. Build and run
 
@@ -117,9 +125,12 @@ cmake --build build --target risc201-cu-demo
 ./build/risc201-cu-demo
 ```
 
-The demo runs arithmetic, loop/branch, call/ret and FPU programs through all
-four configurations, prints a per-micro-cycle trace for the first one, and
-self-checks that all four reach identical architectural state.
+The demo checks, in every configuration, that all 34 opcodes have a microcode
+routine and an entry point in both control memories, and runs programs that
+exercise this module's datapath (immediate/register moves, flag-driven
+branches, call/ret, illegal-opcode halt) through all four configurations,
+printing a per-micro-cycle trace for the first one and self-checking that all
+four reach identical architectural state.
 
 ## 7. Assumptions / open items
 
