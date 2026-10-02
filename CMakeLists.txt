@@ -54,8 +54,11 @@ if(RISC201_TUI AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/simulator_core/ui/tui.cpp
 endif()
 
 add_executable(risc201-tests
-  tests/test_main.cpp)
-target_link_libraries(risc201-tests PRIVATE risc201_config)
+  tests/test_main.cpp
+  tests/test_cpu.cpp
+  tests/test_cu_programs.cpp
+  tests/test_programs.cpp)
+target_link_libraries(risc201-tests PRIVATE risc201_cu)
 target_compile_options(risc201-tests PRIVATE -Wall -Wextra)
 
 enable_testing()
