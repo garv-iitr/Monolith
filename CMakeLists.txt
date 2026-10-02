@@ -24,9 +24,7 @@ target_compile_definitions(risc201_config INTERFACE
 add_library(risc201_cu STATIC
   "control unit/common/internal_registers.cpp"
   "control unit/datapath/datapath.cpp"
-  "control unit/datapath/alu_unit.cpp"
   "control unit/datapath/memory_unit.cpp"
-  "control unit/datapath/fpu_unit.cpp"
   "control unit/microcode/microcode_program.cpp"
   "control unit/microcode/h_assembler.cpp"
   "control unit/microcode/v_assembler.cpp"
