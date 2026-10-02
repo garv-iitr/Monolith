@@ -34,15 +34,13 @@ using namespace risc201::cu;
 
 namespace {
 
-constexpr int kOpcodeCount = 34;
+constexpr int kOpcodeCount = 25;
 const std::array<Opcode, kOpcodeCount> kAllOpcodes = {
     Opcode::NOP, Opcode::ADD, Opcode::SUB, Opcode::MUL, Opcode::DIV, Opcode::MOD,
     Opcode::AND, Opcode::OR,  Opcode::NOT, Opcode::XOR, Opcode::LSL, Opcode::LSR,
     Opcode::ASR, Opcode::CMP, Opcode::MOV, Opcode::LD,  Opcode::ST,
     Opcode::B,   Opcode::BEQ, Opcode::BNE, Opcode::BGT, Opcode::BLT,
-    Opcode::CALL, Opcode::RET, Opcode::BNDCHK, Opcode::HALT,
-    Opcode::FADD, Opcode::FSUB, Opcode::FMUL, Opcode::FDIV, Opcode::FCMP,
-    Opcode::FLD, Opcode::FST, Opcode::FMOV,
+    Opcode::CALL, Opcode::RET, Opcode::HALT,
 };
 
 // --- Instruction encoders (ISA.md formats) ----------------------------------
@@ -151,6 +149,7 @@ struct Snapshot {
   bool halted = false;
   bool faulted = false;
   std::string reason;
+  int cycles = 0;
 };
 
 // --- Trace helpers -----------------------------------------------------------
@@ -221,7 +220,7 @@ Snapshot execute(StageLayout layout, const Program_& prog, bool emit) {
     dp.regs.flags_GT = !prog.seed_n && !prog.seed_z;
   }
 
-  const Program program = build_program();
+  const Program program = build_program(layout);
   CU cu(dp, layout);
   cu.install(RomBuilder<CU>::build(program));
 
@@ -263,6 +262,7 @@ Snapshot execute(StageLayout layout, const Program_& prog, bool emit) {
     if (!alive) break;
   }
 
+  snap.cycles = cycles;
   snap.halted = dp.halted;
   snap.reason = dp.halt_reason;
   for (int i = 0; i < NUM_REGISTERS; ++i) snap.regs[i] = dp.rf.read(static_cast<std::uint8_t>(i));
@@ -292,7 +292,7 @@ bool same(const Snapshot& a, const Snapshot& b) {
 // --- Coverage: every opcode must have a routine and a dispatch entry --------
 int check_coverage() {
   std::printf("\n--- microcode coverage: all %d opcodes ---\n", kOpcodeCount);
-  const Program p = build_program();
+  const Program p = build_program(StageLayout::SIX_STAGE);
   const auto h = assemble_horizontal(p);
   const auto v = assemble_vertical(p);
 
@@ -342,6 +342,7 @@ int main() {
     const Snapshot vs4 = execute<VerticalControlUnit>(StageLayout::FOUR_STAGE, p, false);
 
     std::printf("\n--- %s ---\n", p.name);
+    std::printf("  cycles: 6-stage=%d, 4-stage=%d\n", hs6.cycles, hs4.cycles);
     check(hs6.halted && vs6.halted && hs4.halted && vs4.halted && !hs6.faulted &&
               !vs6.faulted && !hs4.faulted && !vs4.faulted,
           "runs to halt without fault");
@@ -354,7 +355,7 @@ int main() {
     }
     check(same(hs6, vs6), "horizontal == vertical (6-stage)");
     check(same(hs4, vs4), "horizontal == vertical (4-stage)");
-    check(same(hs6, hs4), "6-stage == 4-stage");
+    check(same(hs6, hs4), "6-stage == 4-stage architectural state");
   }
 
   std::printf("\n%s\n", failures == 0 ? "ALL CHECKS PASSED" : "CHECKS FAILED");

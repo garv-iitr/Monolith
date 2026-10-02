@@ -1,0 +1,146 @@
+<mxfile host="app.diagrams.net" modified="2026-10-01T00:00:00.000Z" agent="CommandCode" version="24.0.0" type="device">
+  <diagram id="shared-bus" name="Shared bus">
+    <mxGraphModel dx="1300" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1300" pageHeight="950" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ============ Microcontrol unit ============ -->
+        <mxCell id="c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;opacity=50;verticalAlign=top;fontFamily=Times New Roman;fontSize=14;fontStyle=1;" value="Microcontrol unit" vertex="1">
+          <mxGeometry height="300" width="1220" x="40" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="rom" parent="1" style="whiteSpace=wrap;html=1;fillColor=#B85450;strokeColor=#6C8EBF;fontColor=#FFFFFF;fontFamily=Times New Roman;fontSize=13;" value="Microcode ROM" vertex="1">
+          <mxGeometry height="55" width="190" x="100" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="muimm" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontFamily=Times New Roman;fontSize=12;" value="μimm" vertex="1">
+          <mxGeometry height="42" width="90" x="340" y="155" as="geometry" />
+        </mxCell>
+        <mxCell id="muadder" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontFamily=Times New Roman;fontSize=13;" value="+" vertex="1">
+          <mxGeometry height="45" width="45" x="520" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="cmp" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontFamily=Times New Roman;fontSize=13;" value="=" vertex="1">
+          <mxGeometry height="45" width="45" x="660" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="ismb" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontFamily=Times New Roman;fontSize=12;fontStyle=1;" value="isMBranch" vertex="1">
+          <mxGeometry height="30" width="130" x="760" y="117" as="geometry" />
+        </mxCell>
+
+        <!-- ============ Bus row ============ -->
+        <mxCell id="wb" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontFamily=Times New Roman;fontSize=13;" value="Write bus" vertex="1">
+          <mxGeometry height="45" width="440" x="60" y="470" as="geometry" />
+        </mxCell>
+        <mxCell id="tmux" parent="1" style="shape=mxgraph.electrical.abstract.mux2;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontFamily=Times New Roman;fontSize=12;" value="transfer&#xa;mux" vertex="1">
+          <mxGeometry height="70" width="90" x="600" y="455" as="geometry" />
+        </mxCell>
+        <mxCell id="rb" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontFamily=Times New Roman;fontSize=13;" value="Read bus" vertex="1">
+          <mxGeometry height="45" width="440" x="760" y="470" as="geometry" />
+        </mxCell>
+
+        <!-- ============ Donors / readers ============ -->
+        <mxCell id="decode" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontFamily=Times New Roman;fontSize=13;" value="Decode unit" vertex="1">
+          <mxGeometry height="50" width="150" x="100" y="620" as="geometry" />
+        </mxCell>
+        <mxCell id="pc1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontFamily=Times New Roman;fontSize=12;" value="pc" vertex="1">
+          <mxGeometry height="50" width="80" x="320" y="620" as="geometry" />
+        </mxCell>
+        <mxCell id="units1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5B7B1;strokeColor=#B85450;fontFamily=Times New Roman;fontSize=12;" value="Reg. file, ALU, Mem,&#xa;FPU units" vertex="1">
+          <mxGeometry height="55" width="400" x="100" y="760" as="geometry" />
+        </mxCell>
+        <mxCell id="pc2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontFamily=Times New Roman;fontSize=12;" value="pc" vertex="1">
+          <mxGeometry height="50" width="80" x="880" y="620" as="geometry" />
+        </mxCell>
+        <mxCell id="units2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5B7B1;strokeColor=#B85450;fontFamily=Times New Roman;fontSize=12;" value="Reg. file, ALU, Mem,&#xa;FPU units" vertex="1">
+          <mxGeometry height="55" width="420" x="760" y="760" as="geometry" />
+        </mxCell>
+
+        <!-- ============ Note ============ -->
+        <mxCell id="note1" parent="1" style="text;html=1;align=left;verticalAlign=top;fontFamily=Times New Roman;fontSize=12;fontColor=#333333;" value="Exactly one register drives the write bus (write_src).&#xa;Any number of registers may latch the read bus (read_mask).&#xa;μadder = write bus + μimm   ·   transfer mux: { write bus, μimm, μadder } → read bus.&#xa;isMBranch = (write bus == μimm)  —  used by mbeq." vertex="1">
+          <mxGeometry height="80" width="1220" x="40" y="845" as="geometry" />
+        </mxCell>
+
+        <!-- ============ Microcontrol unit edges ============ -->
+        <mxCell id="e1" edge="1" parent="1" source="rom" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="muimm" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="muimm" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="muadder" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="485" y="176" />
+              <mxPoint x="485" y="132" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="muimm" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;endArrow=block;endFill=1;exitX=0.5;exitY=0;entryX=0.5;entryY=0;" target="cmp" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="385" y="90" />
+              <mxPoint x="682" y="90" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="cmp" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="ismb" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="wb" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;endArrow=block;endFill=1;fontFamily=Times New Roman;fontSize=11;exitX=1;exitY=0.2;entryX=0.11;entryY=1;" target="muadder" value="write bus">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="525" y="479" />
+              <mxPoint x="525" y="155" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="wb" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;endArrow=block;endFill=1;fontFamily=Times New Roman;fontSize=11;exitX=1;exitY=0.8;entryX=0.49;entryY=1;" target="cmp" value="write bus">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="720" y="506" />
+              <mxPoint x="720" y="190" />
+              <mxPoint x="682" y="190" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="muimm" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;endArrow=block;endFill=1;fontFamily=Times New Roman;fontSize=11;exitX=1;exitY=1;entryX=0;entryY=0.857;" target="tmux" value="μimm">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="545" y="197" />
+              <mxPoint x="545" y="515" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="muadder" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;endArrow=block;endFill=1;fontFamily=Times New Roman;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.214;" target="tmux" value="μadder">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="585" y="132" />
+              <mxPoint x="585" y="470" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="wb" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.529;" target="tmux" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" source="tmux" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="rb" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" edge="1" parent="1" source="c1" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;dashed=1;endArrow=open;endFill=0;fontFamily=Times New Roman;fontSize=11;exitX=0.496;exitY=1;entryX=0.5;entryY=0;" target="tmux" value="transfer_sel">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============ Bus donors / readers ============ -->
+        <mxCell id="e12" edge="1" parent="1" source="decode" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;endArrow=block;endFill=1;exitX=0.5;exitY=0;entryX=0.261;entryY=1;" target="wb" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" edge="1" parent="1" source="pc1" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;endArrow=block;endFill=1;exitX=0.5;exitY=0;entryX=0.682;entryY=1;" target="wb" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" edge="1" parent="1" source="units1" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;endArrow=block;endFill=1;exitX=0.5;exitY=0;entryX=0.545;entryY=1;" target="wb" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" edge="1" parent="1" source="rb" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;endArrow=block;endFill=1;exitX=0.364;exitY=1;entryX=0.5;entryY=0;" target="pc2" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e16" edge="1" parent="1" source="rb" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;endArrow=block;endFill=1;exitX=0.545;exitY=1;entryX=0.571;entryY=0;" target="units2" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

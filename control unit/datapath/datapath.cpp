@@ -48,6 +48,11 @@ void Datapath::execute(const ControlSignals& sig, Word muimm) {
   //    Atharva's and Paraas's units; they latch their results from the shared
   //    internal registers at integration time.
   rf.tick(next, sig, next);
+  if (sig.alu_op == AluOp::PASS_B) {
+    next.alu_result = next.B;
+  } else if (sig.alu_op == AluOp::PASS_A) {
+    next.alu_result = next.A;
+  }
   mem.tick(next, sig, next);
 
   regs = next;
