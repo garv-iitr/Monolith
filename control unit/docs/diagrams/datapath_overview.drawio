@@ -82,10 +82,13 @@
           <mxGeometry height="50" width="100" x="600" y="800" as="geometry" />
         </mxCell>
         <mxCell id="flagsE" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontFamily=Times New Roman;fontSize=12;" value="flags.E" vertex="1">
-          <mxGeometry height="50" width="80" x="740" y="800" as="geometry" />
+          <mxGeometry height="50" width="65" x="730" y="800" as="geometry" />
         </mxCell>
         <mxCell id="flagsGT" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontFamily=Times New Roman;fontSize=12;" value="flags.GT" vertex="1">
-          <mxGeometry height="50" width="80" x="850" y="800" as="geometry" />
+          <mxGeometry height="50" width="65" x="805" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="flagsN" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontFamily=Times New Roman;fontSize=12;" value="flags.N" vertex="1">
+          <mxGeometry height="50" width="65" x="880" y="800" as="geometry" />
         </mxCell>
         <mxCell id="mar" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontFamily=Times New Roman;fontSize=12;" value="mar" vertex="1">
           <mxGeometry height="50" width="80" x="960" y="800" as="geometry" />
@@ -248,6 +251,15 @@
         <mxCell id="e28" edge="1" parent="1" source="aluResult" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;startArrow=block;startFill=1;endArrow=block;endFill=1;exitX=0.5;exitY=0;entryX=0.372;entryY=1;" target="bus" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
+        <mxCell id="e28b" edge="1" parent="1" source="flagsE" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;startArrow=block;startFill=1;endArrow=block;endFill=1;exitX=0.5;exitY=0;entryX=0.450;entryY=1;" target="bus" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e28c" edge="1" parent="1" source="flagsGT" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;startArrow=block;startFill=1;endArrow=block;endFill=1;exitX=0.5;exitY=0;entryX=0.500;entryY=1;" target="bus" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e28d" edge="1" parent="1" source="flagsN" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;startArrow=block;startFill=1;endArrow=block;endFill=1;exitX=0.5;exitY=0;entryX=0.550;entryY=1;" target="bus" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
         <mxCell id="e29" edge="1" parent="1" source="mar" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;strokeWidth=3;startArrow=block;startFill=1;endArrow=block;endFill=1;exitX=0.5;exitY=0;entryX=0.596;entryY=1;" target="bus" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
@@ -301,7 +313,14 @@
         <mxCell id="e40" edge="1" parent="1" source="flags" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0.5;entryY=1;" target="flagsGT" value="">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="890" y="1007" />
+              <mxPoint x="837" y="1007" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e40b" edge="1" parent="1" source="flags" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6C8EBF;endArrow=block;endFill=1;exitX=1;exitY=0.2;entryX=0.5;entryY=1;" target="flagsN" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="912" y="988" />
             </Array>
           </mxGeometry>
         </mxCell>
