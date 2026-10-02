@@ -2,10 +2,12 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "control_unit.h"
 #include "isa_spec/isa.h"
+#include "simulator_core/core/alu_unit.h"
 #include "simulator_core/core/exception.h"
 #include "simulator_core/core/state_view.h"
 
@@ -17,7 +19,7 @@ class Cpu {
 
   explicit Cpu(std::size_t mem_words = 1024,
                risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE)
-      : dp_(mem_words), cu_(dp_, layout) {
+      : dp_(mem_words), cu_(dp_, layout), alu_(std::make_unique<ReferenceAlu>()) {
     cu_.install(risc201::cu::assemble_horizontal(risc201::cu::build_program()));
   }
 
@@ -26,7 +28,9 @@ class Cpu {
   bool step() {
     if (dp_.halted) return false;
     try {
-      return cu_.step();
+      const bool alive = cu_.step();
+      if (alive) alu_->tick(dp_.regs, cu_.signals(), dp_.regs);
+      return alive;
     } catch (const RuntimeException& e) {
       fault_code_ = e.code;
       fault_address_ = e.address;
@@ -84,6 +88,7 @@ class Cpu {
  private:
   risc201::cu::Datapath dp_;
   ControlUnit cu_;
+  std::unique_ptr<AluUnit> alu_;
   ExceptionCode fault_code_ = ExceptionCode::NONE;
   std::uint64_t fault_address_ = 0;
 };
