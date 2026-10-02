@@ -22,7 +22,6 @@ Word enc_branch(Opcode op, int word_offset) {
   return (static_cast<Word>(op) << 26) | (static_cast<Word>(word_offset) & 0x03FFFFFF);
 }
 
-Word enc_zero(Opcode op) { return static_cast<Word>(op) << 26; }
 Word enc_halt() { return static_cast<Word>(Opcode::HALT) << 26; }
 
 void print_state(const char* label, const risc201::Cpu& cpu) {
@@ -44,18 +43,15 @@ void print_state(const char* label, const risc201::Cpu& cpu) {
 }  // namespace
 
 int main() {
-  const std::vector<Word> code = {
-      enc_imm(Opcode::MOV, 1, 0, 5),
-      enc_reg(Opcode::MOV, 2, 0, 1),
-      enc_imm(Opcode::MOV, 3, 0, 0x1234),
-      enc_zero(Opcode::NOP),
-      enc_halt(),
-  };
-
   risc201::Cpu cpu;
-  cpu.load(code);
+  cpu.load({enc_imm(Opcode::MOV, 1, 0, 6),
+            enc_imm(Opcode::MOV, 2, 0, 7),
+            enc_reg(Opcode::MUL, 3, 1, 2),
+            enc_reg(Opcode::ADD, 4, 1, 2),
+            enc_reg(Opcode::SUB, 5, 2, 1),
+            enc_halt()});
   cpu.run();
-  print_state("transfer", cpu);
+  print_state("alu", cpu);
 
   risc201::Cpu bad;
   bad.load({enc_branch(Opcode::CALL, 0)});
