@@ -43,6 +43,44 @@ RISC201_TEST(cpu_runs_transfer_program) {
   CHECK(cpu.read_reg(3) == 0x1234u);
 }
 
+RISC201_TEST(cpu_executes_alu_ops) {
+  risc201::Cpu cpu;
+  cpu.load({enc_imm(Opcode::MOV, 1, 0, 6),
+            enc_imm(Opcode::MOV, 2, 0, 7),
+            enc_reg(Opcode::MUL, 3, 1, 2),
+            enc_reg(Opcode::ADD, 4, 1, 2),
+            enc_reg(Opcode::SUB, 5, 2, 1),
+            enc_reg(Opcode::DIV, 6, 2, 1),
+            enc_reg(Opcode::MOD, 7, 2, 1),
+            enc_reg(Opcode::AND, 8, 1, 2),
+            enc_reg(Opcode::OR, 9, 1, 2),
+            enc_reg(Opcode::XOR, 10, 1, 2),
+            enc_halt()});
+  cpu.run();
+
+  CHECK(!cpu.faulted());
+  CHECK(cpu.read_reg(3) == 42u);  // 6 * 7
+  CHECK(cpu.read_reg(4) == 13u);  // 6 + 7
+  CHECK(cpu.read_reg(5) == 1u);   // 7 - 6
+  CHECK(cpu.read_reg(6) == 1u);   // 7 / 6
+  CHECK(cpu.read_reg(7) == 1u);   // 7 % 6
+  CHECK(cpu.read_reg(8) == 6u);   // 6 & 7
+  CHECK(cpu.read_reg(9) == 7u);   // 6 | 7
+  CHECK(cpu.read_reg(10) == 1u);  // 6 ^ 7
+}
+
+RISC201_TEST(cpu_cmp_sets_flags) {
+  risc201::Cpu cpu;
+  cpu.load({enc_imm(Opcode::MOV, 1, 0, 5),
+            enc_imm(Opcode::MOV, 2, 0, 5),
+            enc_reg(Opcode::CMP, 0, 1, 2),
+            enc_halt()});
+  cpu.run();
+
+  CHECK(cpu.flags().Z);
+  CHECK(!cpu.flags().N);
+}
+
 RISC201_TEST(cpu_bad_memory_access_faults) {
   risc201::Cpu cpu;
   cpu.load({enc_branch(Opcode::CALL, 0)});
