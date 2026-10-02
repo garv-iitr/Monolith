@@ -40,15 +40,16 @@ Routine not_routine() {
   };
 }
 
-// ---- Format 2: MOV ----------------------------------------------------------
+// ---- Format 2: MOV (two-operand, routed through ALU PASS_B) ----------------
 Routine mov_routine() {
   return {
       mbeq(IR::I, 1, L_IMM),
       mmov(IR::REG_SRC, IR::RS2, a_reg(RegOp::READ)),
-      mmov(IR::REG_DATA, IR::REG_VAL),
+      mmov(IR::B, IR::REG_VAL, a_alu(AluOp::PASS_B)),
       mb(L_RW),
-      mlabel(L_IMM, mmov(IR::REG_DATA, IR::IMMX)),
-      mlabel(L_RW, mmov(IR::REG_SRC, IR::RD, a_reg(RegOp::WRITE), SC::WRITEBACK)),
+      mlabel(L_IMM, mmov(IR::B, IR::IMMX, a_alu(AluOp::PASS_B))),
+      mlabel(L_RW, mmov(IR::REG_DATA, IR::ALU_RESULT)),
+      mmov(IR::REG_SRC, IR::RD, a_reg(RegOp::WRITE), SC::WRITEBACK),
       mb(kPreamble),
   };
 }
@@ -68,30 +69,36 @@ Routine cmp_routine() {
 }
 
 // ---- Data movement: LD / ST -------------------------------------------------
-Routine ld_routine() {
-  return {
+Routine ld_routine(StageLayout layout) {
+  Routine r = {
       mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),
       mmov(IR::A, IR::REG_VAL),
       mmov(IR::B, IR::IMMX, a_alu(AluOp::ADD)),          // effective address
-      mmov(IR::MEMCHK_ADDR, IR::ALU_RESULT, a_chk(MemChkOp::CHECK), SC::CHECK),
-      mmov(IR::MAR, IR::ALU_RESULT, a_mem(MemOp::READ), SC::MEMORY),
-      mmov(IR::REG_DATA, IR::LD_RESULT, 0, SC::MEMORY),
-      mmov(IR::REG_SRC, IR::RD, a_reg(RegOp::WRITE), SC::WRITEBACK),
-      mb(kPreamble),
   };
+  if (layout == StageLayout::SIX_STAGE) {
+    r.push_back(mmov(IR::MEMCHK_ADDR, IR::ALU_RESULT, a_chk(MemChkOp::CHECK), SC::CHECK));
+  }
+  r.push_back(mmov(IR::MAR, IR::ALU_RESULT, a_mem(MemOp::READ), SC::MEMORY));
+  r.push_back(mmov(IR::REG_DATA, IR::LD_RESULT, 0, SC::MEMORY));
+  r.push_back(mmov(IR::REG_SRC, IR::RD, a_reg(RegOp::WRITE), SC::WRITEBACK));
+  r.push_back(mb(kPreamble));
+  return r;
 }
 
-Routine st_routine() {
-  return {
+Routine st_routine(StageLayout layout) {
+  Routine r = {
       mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),
       mmov(IR::A, IR::REG_VAL),
       mmov(IR::B, IR::IMMX, a_alu(AluOp::ADD)),
-      mmov(IR::MEMCHK_ADDR, IR::ALU_RESULT, a_chk(MemChkOp::CHECK), SC::CHECK),
-      mmov(IR::MAR, IR::ALU_RESULT, 0, SC::MEMORY),
-      mmov(IR::REG_SRC, IR::RD, a_reg(RegOp::READ), SC::MEMORY),
-      mmov(IR::MDR, IR::REG_VAL, a_mem(MemOp::WRITE), SC::MEMORY),
-      mb(kPreamble),
   };
+  if (layout == StageLayout::SIX_STAGE) {
+    r.push_back(mmov(IR::MEMCHK_ADDR, IR::ALU_RESULT, a_chk(MemChkOp::CHECK), SC::CHECK));
+  }
+  r.push_back(mmov(IR::MAR, IR::ALU_RESULT, 0, SC::MEMORY));
+  r.push_back(mmov(IR::REG_SRC, IR::RD, a_reg(RegOp::READ), SC::MEMORY));
+  r.push_back(mmov(IR::MDR, IR::REG_VAL, a_mem(MemOp::WRITE), SC::MEMORY));
+  r.push_back(mb(kPreamble));
+  return r;
 }
 
 // ---- Control flow -----------------------------------------------------------
@@ -113,104 +120,43 @@ Routine branch_if(InternalReg flag, std::int32_t value) {
 }
 
 // Full-descending stack call / ret (SP = r14).
-Routine call_routine() {
-  return {
+Routine call_routine(StageLayout layout) {
+  Routine r = {
       mmovi(IR::REG_SRC, REG_SP, a_reg(RegOp::READ)),  // regSrc <- sp
       madd(IR::REG_VAL, -4),                           // sp - 4
       mmov(IR::MAR, IR::REG_VAL),                      // mar <- new sp
-      mmov(IR::REG_DATA, IR::REG_VAL, a_reg(RegOp::WRITE), SC::WRITEBACK),
-      mmov(IR::MDR, IR::PC, a_mem(MemOp::WRITE), SC::MEMORY),
-      mmov(IR::PC, IR::BRANCH_TARGET),
-      mb(kPreamble),
   };
+  if (layout == StageLayout::SIX_STAGE) {
+    r.push_back(mmov(IR::MEMCHK_ADDR, IR::MAR, a_chk(MemChkOp::CHECK), SC::CHECK));
+  }
+  r.push_back(mmov(IR::REG_DATA, IR::REG_VAL, a_reg(RegOp::WRITE), SC::WRITEBACK));
+  r.push_back(mmov(IR::MDR, IR::PC, a_mem(MemOp::WRITE), SC::MEMORY));
+  r.push_back(mmov(IR::PC, IR::BRANCH_TARGET));
+  r.push_back(mb(kPreamble));
+  return r;
 }
 
-Routine ret_routine() {
-  return {
+Routine ret_routine(StageLayout layout) {
+  Routine r = {
       mmovi(IR::REG_SRC, REG_SP, a_reg(RegOp::READ)),
-      mmov(IR::MAR, IR::REG_VAL, a_mem(MemOp::READ), SC::MEMORY),
-      mmov(IR::PC, IR::LD_RESULT, 0, SC::MEMORY),
-      madd(IR::REG_VAL, 4),
-      mmov(IR::REG_DATA, IR::REG_VAL, a_reg(RegOp::WRITE), SC::WRITEBACK),
-      mb(kPreamble),
+      mmov(IR::MAR, IR::REG_VAL),
   };
-}
-
-// BNDCHK rs1, #imm -- bounds/presence check of the effective address.
-Routine bndchk_routine() {
-  return {
-      mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),
-      mmov(IR::A, IR::REG_VAL),
-      mmov(IR::B, IR::IMMX, a_alu(AluOp::ADD)),
-      mmov(IR::MEMCHK_ADDR, IR::ALU_RESULT, a_chk(MemChkOp::CHECK), SC::CHECK),
-      mb(kPreamble),
-  };
+  if (layout == StageLayout::SIX_STAGE) {
+    r.push_back(mmov(IR::MEMCHK_ADDR, IR::MAR, a_chk(MemChkOp::CHECK), SC::CHECK));
+  }
+  r.push_back(mmov(IR::MAR, IR::REG_VAL, a_mem(MemOp::READ), SC::MEMORY));
+  r.push_back(mmov(IR::PC, IR::LD_RESULT, 0, SC::MEMORY));
+  r.push_back(madd(IR::REG_VAL, 4));
+  r.push_back(mmov(IR::REG_DATA, IR::REG_VAL, a_reg(RegOp::WRITE), SC::WRITEBACK));
+  r.push_back(mb(kPreamble));
+  return r;
 }
 
 Routine halt_routine() { return {mhalt()}; }
 
-// ---- FPU --------------------------------------------------------------------
-Routine fpu3(FpuOp op) {
-  return {
-      mmov(IR::FP_SRC, IR::RS1, a_fpu(FpuOp::READ)),   // fs1
-      mmov(IR::FP_A, IR::FP_VAL),
-      mmov(IR::FP_SRC, IR::RS2, a_fpu(FpuOp::READ)),   // fs2
-      mmov(IR::FP_B, IR::FP_VAL, a_fpu(op)),
-      mmov(IR::FP_SRC, IR::RD),                        // fd
-      mmov(IR::FP_DATA, IR::FPU_RESULT, a_fpu(FpuOp::WRITE), SC::WRITEBACK),
-      mb(kPreamble),
-  };
-}
-
-Routine fcmp_routine() {
-  return {
-      mmov(IR::FP_SRC, IR::RS1, a_fpu(FpuOp::READ)),
-      mmov(IR::FP_A, IR::FP_VAL),
-      mmov(IR::FP_SRC, IR::RS2, a_fpu(FpuOp::READ)),
-      mmov(IR::FP_B, IR::FP_VAL, a_fpu(FpuOp::FCMP)),
-      mb(kPreamble),
-  };
-}
-
-Routine fmov_routine() {
-  return {
-      mmov(IR::FP_SRC, IR::RS2, a_fpu(FpuOp::READ)),
-      mmov(IR::FP_B, IR::FP_VAL, a_fpu(FpuOp::FMOV)),
-      mmov(IR::FP_SRC, IR::RD),
-      mmov(IR::FP_DATA, IR::FPU_RESULT, a_fpu(FpuOp::WRITE), SC::WRITEBACK),
-      mb(kPreamble),
-  };
-}
-
-Routine fld_routine() {
-  return {
-      mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),
-      mmov(IR::A, IR::REG_VAL),
-      mmov(IR::B, IR::IMMX, a_alu(AluOp::ADD)),
-      mmov(IR::MEMCHK_ADDR, IR::ALU_RESULT, a_chk(MemChkOp::CHECK), SC::CHECK),
-      mmov(IR::MAR, IR::ALU_RESULT, a_mem(MemOp::READ), SC::MEMORY),
-      mmov(IR::FP_DATA, IR::LD_RESULT, 0, SC::MEMORY),
-      mmov(IR::FP_SRC, IR::RD, a_fpu(FpuOp::WRITE), SC::WRITEBACK),
-      mb(kPreamble),
-  };
-}
-
-Routine fst_routine() {
-  return {
-      mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),
-      mmov(IR::A, IR::REG_VAL),
-      mmov(IR::B, IR::IMMX, a_alu(AluOp::ADD)),
-      mmov(IR::MEMCHK_ADDR, IR::ALU_RESULT, a_chk(MemChkOp::CHECK), SC::CHECK),
-      mmov(IR::MAR, IR::ALU_RESULT, 0, SC::MEMORY),
-      mmov(IR::FP_SRC, IR::RD, a_fpu(FpuOp::READ), SC::MEMORY),
-      mmov(IR::MDR, IR::FP_VAL, a_mem(MemOp::WRITE), SC::MEMORY),
-      mb(kPreamble),
-  };
-}
-
 }  // namespace
 
-Program build_program() {
+Program build_program(StageLayout layout) {
   Program p;
   auto add = [&p](Opcode op, Routine r) { p.push_back(ProgramEntry{op, std::move(r)}); };
 
@@ -233,29 +179,18 @@ Program build_program() {
   add(Opcode::CMP, cmp_routine());
 
   // Data movement
-  add(Opcode::LD, ld_routine());
-  add(Opcode::ST, st_routine());
+  add(Opcode::LD, ld_routine(layout));
+  add(Opcode::ST, st_routine(layout));
 
-  // Control flow
+  // Control flow & system
   add(Opcode::B,    b_routine());
   add(Opcode::BEQ,  branch_if(IR::FLAGS_E, 1));
   add(Opcode::BNE,  branch_if(IR::FLAGS_E, 0));
   add(Opcode::BGT,  branch_if(IR::FLAGS_GT, 1));
   add(Opcode::BLT,  branch_if(IR::FLAGS_N, 1));
-  add(Opcode::CALL, call_routine());
-  add(Opcode::RET,  ret_routine());
-  add(Opcode::BNDCHK, bndchk_routine());
+  add(Opcode::CALL, call_routine(layout));
+  add(Opcode::RET,  ret_routine(layout));
   add(Opcode::HALT, halt_routine());
-
-  // FPU
-  add(Opcode::FADD, fpu3(FpuOp::FADD));
-  add(Opcode::FSUB, fpu3(FpuOp::FSUB));
-  add(Opcode::FMUL, fpu3(FpuOp::FMUL));
-  add(Opcode::FDIV, fpu3(FpuOp::FDIV));
-  add(Opcode::FCMP, fcmp_routine());
-  add(Opcode::FMOV, fmov_routine());
-  add(Opcode::FLD,  fld_routine());
-  add(Opcode::FST,  fst_routine());
 
   add(Opcode::NOP, {mb(kPreamble)});
 

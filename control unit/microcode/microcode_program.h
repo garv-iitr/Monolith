@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "common/control_signals.h"
 #include "isa_spec/isa.h"
 #include "microcode/micro_asm.h"
 
@@ -21,8 +22,8 @@ struct ProgramEntry {
 
 using Program = std::vector<ProgramEntry>;
 
-// Build the complete RISC201 microprogram (all 37 opcodes).
-Program build_program();
+// Build the RISC201 microprogram (25 active core integer/control opcodes).
+Program build_program(StageLayout layout = StageLayout::SIX_STAGE);
 
 }  // namespace risc201::cu
 
