@@ -1,14 +1,12 @@
-# **Product Requirements Document**
-
 ## **RISC201 Processor Design & Simulation Suite**
 
-**Course:** CSC-201 Computer Organization & Architecture, Autumn 2026 **Tech Stack:** C++ (C++17 or later recommended) **Team Size:** 5
+**Course:** CSC-201 Computer Organization & Architecture, Autumn 2026 **Tech Stack:** C++ (C++23) **Team Size:** 5(Garv, Aditya, Atharva, Saatvik, Paras)
 
 ---
 
 ## **1\. Overview**
 
-We are building a complete hardware/software co-design project centered on a custom instruction set architecture, **RISC201**. The deliverable is not just an ISA on paper — it's a full toolchain and simulation environment:
+We are building a complete software co-design project centered on a custom instruction set architecture, **RISC201**. The deliverable a full toolchain and simulation environment:
 
 * Two variants of the processor datapath (4-stage and 6-stage pipeline)  
 * A microprogrammed control unit (horizontal and/or vertical)  
@@ -22,25 +20,66 @@ All five workstreams share one core architectural contract (defined below in §2
 
 ---
 
-## **2\. Architecture Decisions (Locked Parameters)**
+## **2\. Architecture Decisions** 
 
 These are fixed up front so all five members design against the same contract:
 
 | Parameter | Value |
 | ----- | ----- |
-| Word size | 32-bit |
-| General-purpose registers | 16 (R0–R15) |
+| Word size | 64-bit |
+| General-purpose registers | 32 (R0–R31) |
 | Register width | 32-bit each |
 | Special registers | PC (32-bit), SP (32-bit, full-descending stack), FLAGS (Z, N, C, V) |
-| Pipeline variant A | 4-stage: IF → ID/OF → EX → WB (MEM folded into EX/WB) |
-| Pipeline variant B | 6-stage: IF → ID → OF → EX → MEM → WB |
-| Instruction width | 32-bit fixed-width encoding |
+| Pipeline variant A | 4-stage: IF \+ OF → EX →MA  → RW |
+| Pipeline variant B | 6-stage: IF → OF → EX → MEMCHK → MA → RW |
+| Instruction width | 64-bit fixed-width encoding |
 | Instruction formats | R-type (reg-reg-reg), I-type (reg-reg-immediate), J-type (opcode \+ 26-bit address/offset) |
 | Control unit | Microprogrammed, Control Memory (CM) driven, microPC-based sequencing; both horizontal and vertical encodings to be implemented and compared |
 | Stack convention | Full-descending (SP decrements before push, points to last valid item) |
 | Memory model | Flat, word-addressable simulated memory (size TBD by Core Engine \+ Memory lead jointly, suggest 4K words minimum) |
 
-> **Note:** Exact opcode table, addressing modes, and the full instruction list must be jointly finalized by Atharva (ALU/datapath), Garv (control unit), and Saatvik (assembler) in Week 1, since all three depend on it. This is Milestone 0 below.
+## **Opcode Reference Table**
+
+The following table details the baseline instruction set for the RISC201 architecture, including memory operations, arithmetic/logical operations, control flow, and system calls derived from assembly practice specifications:
+
+| Mnemonic | Opcode (Hex) | Opcode (Binary) | Category | Operation |
+| :---- | :---- | :---- | :---- | :---- |
+| **NOP** | 0x00 | 000000 | ALU / Logic | No operation |
+| **ADD** | 0x01 | 000001 | ALU / Logic | R\[rd\] \= R\[rs\] \+ R\[rt\] (or imm) |
+| **SUB** | 0x02 | 000010 | ALU / Logic | R\[rd\] \= R\[rs\] \- R\[rt\] (or imm) |
+| **MUL** | 0x03 | 000011 | ALU / Logic | R\[rd\] \= R\[rs\] \* R\[rt\] (or imm) |
+| **DIV** | 0x04 | 000100 | ALU / Logic | R\[rd\] \= R\[rs\] / R\[rt\] |
+| **MOD** | 0x05 | 000101 | ALU / Logic | R\[rd\] \= R\[rs\] % R\[rt\] |
+| **AND** | 0x06 | 000110 | ALU / Logic | R\[rd\] \= R\[rs\] & R\[rt\] |
+| **OR** | 0x07 | 000111 | ALU / Logic | R\[rd\] \= R\[rs\] | R\[rt\] |
+| **NOT** | 0x08 | 001000 | ALU / Logic | R\[rd\] \= \~R\[rs\] |
+| **XOR** | 0x09 | 001001 | ALU / Logic | R\[rd\] \= R\[rs\] ^ R\[rt\] (or imm) |
+| **LSL** | 0x0A | 001010 | ALU / Logic | R\[rd\] \= R\[rs\] \<\< shift |
+| **LSR** | 0x0B | 001011 | ALU / Logic | R\[rd\] \= R\[rs\] \>\> shift (Logical) |
+| **ASR** | 0x0C | 001100 | ALU / Logic | R\[rd\] \= R\[rs\] \>\> shift (Arithmetic) |
+| **CMP** | 0x0D | 001101 | ALU / Logic | Update FLAGS (Z, N, C, V) |
+| **MOV** | 0x10 | 010000 | Data Movement | R\[rd\] \= R\[rs\] or imm |
+| **LD** | 0x11 | 010001 | Data Movement | R\[rt\] \= Mem\[R\[rs\] \+ imm\] |
+| **ST** | 0x12 | 010010 | Data Movement | Mem\[R\[rs\] \+ imm\] \= R\[rt\] |
+| **PUSH** | 0x13 | 010011 | Data Movement | SP \-= 1, Mem\[SP\] \= R\[rs\] |
+| **POP** | 0x14 | 010100 | Data Movement | R\[rd\] \= Mem\[SP\], SP \+= 1 |
+| **SWAP** | 0x15 | 010101 | Data Movement | R\[rs\] \<-\> R\[rt\] |
+| **CSEL** | 0x16 | 010110 | Data Movement | R\[rd\] \= cond ? R\[rs\] : R\[rt\] |
+| **B** | 0x20 | 100000 | Control Flow | PC \= target address |
+| **BEQ** | 0x21 | 100001 | Control Flow | If Z==1, PC \= target |
+| **BNE** | 0x22 | 100010 | Control Flow | If Z==0, PC \= target |
+| **BGT** | 0x23 | 100011 | Control Flow | If N0 & Z0, PC \= target |
+| **BLT** | 0x24 | 100100 | Control Flow | If N==1, PC \= target |
+| **CALL** | 0x25 | 100101 | Control Flow | Push PC, PC \= target |
+| **RET** | 0x26 | 100110 | Control Flow | Pop PC |
+| **FADD** | 0x30 | 110000 | FPU Math | \$f0 \= \$f1 \+ \$f2 |
+| **FSUB** | 0x31 | 110001 | FPU Math | \$f0 \= \$f1 \- \$f2 |
+| **FMUL** | 0x32 | 110010 | FPU Math | \$f0 \= \$f1 \* \$f2 |
+| **FDIV** | 0x33 | 110011 | FPU Math | \$f0 \= \$f1 / \$f2 |
+| **FCMP** | 0x34 | 110100 | FPU Control flow  | Compares `$rs` and `$rt` (FP rules), updates standard Z/N Flags.  |
+| *(Reserved)* | 0x3D | 111101 | *Empty* | *Buffer slot* |
+| **BNDCHK** | 0x3E | 111110 | System | Verify stack/address bounds |
+| **HALT** | 0x3F | 111111 | System | Halt CPU execution |
 
 ---
 
@@ -55,11 +94,11 @@ Since the repo already exists, each section should live in its own module direct
   /simulator\_core/      \# Aditya — CLI, execution engine, debugger  
   /alu/             \# Atharva — ALU class, datapath, pipeline stage logic  
   /control\_unit/       \# Garv — microcode, control memory, microPC  
-  /memory\_safety/       \# Paraas — stack guards, exceptions, ASCII visualizer  
+  /memory\_safety/       \# Paras — stack guards, exceptions, ASCII visualizer  
   /tests/            \# shared, per-module \+ integration tests  
   /docs/             \# design docs, ISA spec doc, eval reports
 
-Branch convention suggestion: `feature/<module-name>/<short-desc>`, PRs into `dev`, merges into `main` only at milestone checkpoints (see §5).
+Branch convention suggestion: `feature/<module-name>/<short-desc>`, PRs into `dev`, merges into `main` only at milestone checkpoints.
 
 **Critical shared artifact:** `/isa_spec/isa.h` — the opcode table, instruction encoding, and register enum. This file is co-owned by Saatvik, Atharva, and Garv and must be frozen after Milestone 0 (changes after that require a team sync, since three modules depend on it directly and two more depend on it transitively).
 
@@ -82,7 +121,7 @@ We'll structure internal milestones around these three checkpoints, plus a Miles
 
 ### **5.0 Milestone 0 — ISA & Interface Freeze (before Sept 30, \~first week)**
 
-*Joint deliverable — Saatvik, Aditya, Atharva, Garv, Paraas all participate*
+*Joint deliverable — Saatvik, Aditya, Atharva, Garv, Paras all participate*
 
 * Finalize `isa.h`: full opcode table, instruction formats, addressing modes  
 * Agree on memory size, exception codes, and the "module interface contract" (function signatures each module exposes to the simulator core)  
@@ -218,7 +257,7 @@ We'll structure internal milestones around these three checkpoints, plus a Miles
 
 ---
 
-### **5.5 @Paraas — Memory Security & Pipeline Analyst (Evaluation Lead)**
+### **5.5 @Paras — Memory Security & Pipeline Analyst (Evaluation Lead)**
 
 **Covers assignment items:** 2f, 2g, item 5 (overall test/evaluation coordination)
 
@@ -264,6 +303,3 @@ Because five independently-built modules must function as one system, schedule t
 * **Multiply/divide algorithm scope** for the ALU is ambitious if time-constrained — Atharva should confirm by Oct 14 whether both will be implemented or just one, and flag early if descoping is needed.  
 * **Vertical microcode** is comparatively more complex to encode/decode — Garv should timebox the design in Milestone 0 so it doesn't slip past Oct 14\.  
 * **CR coordination for team Excel sheet / TA conflict resolution** — administrative, not technical, but noted since it's in the assignment brief and someone (likely a CR) needs to own it separately from this PRD.
-
----
-
