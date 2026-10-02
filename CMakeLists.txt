@@ -24,9 +24,7 @@ target_compile_definitions(risc201_config INTERFACE
 add_library(risc201_cu STATIC
   "control unit/common/internal_registers.cpp"
   "control unit/datapath/datapath.cpp"
-  "control unit/datapath/alu_unit.cpp"
   "control unit/datapath/memory_unit.cpp"
-  "control unit/datapath/fpu_unit.cpp"
   "control unit/microcode/microcode_program.cpp"
   "control unit/microcode/h_assembler.cpp"
   "control unit/microcode/v_assembler.cpp"
@@ -38,20 +36,8 @@ add_executable(risc201-cu-demo "control unit/main.cpp")
 target_link_libraries(risc201-cu-demo PRIVATE risc201_cu)
 target_compile_options(risc201-cu-demo PRIVATE -Wall -Wextra)
 
-add_library(risc201_alu STATIC
-  alu/alu.cpp)
-target_link_libraries(risc201_alu PUBLIC risc201_config)
-target_compile_options(risc201_alu PRIVATE -Wall -Wextra)
-
-add_library(risc201_core STATIC
-  simulator_core/core/memory.cpp
-  simulator_core/core/register_file.cpp
-  simulator_core/core/decoder.cpp)
-target_link_libraries(risc201_core PUBLIC risc201_config)
-target_compile_options(risc201_core PRIVATE -Wall -Wextra)
-
 add_executable(risc201-sim simulator_core/main.cpp)
-target_link_libraries(risc201-sim PRIVATE risc201_core risc201_cu)
+target_link_libraries(risc201-sim PRIVATE risc201_cu)
 target_compile_options(risc201-sim PRIVATE -Wall -Wextra)
 
 if(RISC201_TUI AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/simulator_core/ui/tui.cpp")
@@ -68,13 +54,8 @@ if(RISC201_TUI AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/simulator_core/ui/tui.cpp
 endif()
 
 add_executable(risc201-tests
-  tests/test_main.cpp
-  tests/test_isa.cpp
-  tests/test_memory.cpp
-  tests/test_register_file.cpp
-  tests/test_decoder.cpp
-  tests/test_alu.cpp)
-target_link_libraries(risc201-tests PRIVATE risc201_core risc201_alu)
+  tests/test_main.cpp)
+target_link_libraries(risc201-tests PRIVATE risc201_config)
 target_compile_options(risc201-tests PRIVATE -Wall -Wextra)
 
 enable_testing()
