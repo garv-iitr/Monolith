@@ -10,3 +10,5 @@ compile_commands.json
 .commandcode
 .vscode/test_sg
 *.o
+test_sg
+demo_viz
