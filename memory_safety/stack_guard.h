@@ -15,7 +15,7 @@ namespace safety {
 //   push OK        : sp > STACK_LIMIT
 //   pop  OK        : sp < STACK_BASE
 //
-// Uses ExceptionCode from simulator_core/core/exception.h.
+// Uses ::ExceptionCode from simulator_core/core/exception.h.
 // Does NOT define its own error codes.
 
 class StackGuard {
@@ -32,9 +32,9 @@ class StackGuard {
   bool frame_ok(Word sp, Word size) const;
   bool addr_ok(Word addr, Word size, bool is_write) const;
 
-  RuntimeException check_push(Word sp, Word pc) const;
-  RuntimeException check_pop(Word sp, Word pc) const;
-  RuntimeException check_mem(Word addr, Word size, bool is_write, Word pc) const;
+  ::RuntimeException check_push(Word sp, Word pc) const;
+  ::RuntimeException check_pop(Word sp, Word pc) const;
+  ::RuntimeException check_mem(Word addr, Word size, bool is_write, Word pc) const;
 
   Word base()  const { return base_;  }
   Word limit() const { return limit_; }
