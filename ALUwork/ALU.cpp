@@ -1,261 +1,277 @@
 #include "alu.h"
 
 using namespace std;
+using namespace risc201::cu;
 
-// ------------------------------------------
-// 1. FUNDAMENTAL GATES
-// ------------------------------------------
+// ==========================================
+// 1. PRIMITIVE GATES
+// ==========================================
 bool ALU::gate_NOT(bool a) const { return (a == true) ? false : true; }
 bool ALU::gate_NAND(bool a, bool b) const { return (a == true && b == true) ? false : true; }
 bool ALU::gate_NOR(bool a, bool b) const { return (a == false && b == false) ? true : false; }
 bool ALU::gate_AND(bool a, bool b) const { return gate_NOT(gate_NAND(a, b)); }
 bool ALU::gate_OR(bool a, bool b)  const { return gate_NOT(gate_NOR(a, b)); }
-bool ALU::gate_XOR(bool a, bool b) const {
-    return gate_OR(gate_AND(a, gate_NOT(b)), gate_AND(gate_NOT(a), b));
-}
+bool ALU::gate_XOR(bool a, bool b) const { return gate_OR(gate_AND(a, gate_NOT(b)), gate_AND(gate_NOT(a), b)); }
 
-// ------------------------------------------
-// 2. LOGIC PATHS
-// ------------------------------------------
+// ==========================================
+// 2. PARALLEL BITWISE LOGIC
+// ==========================================
 bitset<32> ALU::logic_AND(const bitset<32>& a, const bitset<32>& b) const {
     bitset<32> res;
     for (int i = 0; i < 32; ++i) res[i] = gate_AND(a[i], b[i]);
     return res;
 }
-
 bitset<32> ALU::logic_OR(const bitset<32>& a, const bitset<32>& b) const {
     bitset<32> res;
     for (int i = 0; i < 32; ++i) res[i] = gate_OR(a[i], b[i]);
     return res;
 }
-
 bitset<32> ALU::logic_XOR(const bitset<32>& a, const bitset<32>& b) const {
     bitset<32> res;
     for (int i = 0; i < 32; ++i) res[i] = gate_XOR(a[i], b[i]);
     return res;
 }
-
 bitset<32> ALU::logic_NOT(const bitset<32>& a) const {
     bitset<32> res;
     for (int i = 0; i < 32; ++i) res[i] = gate_NOT(a[i]);
     return res;
 }
 
-// ------------------------------------------
-// 3. SHIFTERS
-// ------------------------------------------
+// ==========================================
+// 3. LOGARITHMIC BARREL SHIFTERS
+// ==========================================
 bitset<32> ALU::shift_LSL(const bitset<32>& a, uint32_t shift_amt) const {
-    bitset<32> res;
-    for (int i = 0; i < 32; ++i) res[i] = (i >= shift_amt) ? a[i - shift_amt] : false;
-    return res;
+    bitset<32> s[6];
+    s[0] = a;
+    for (int stage = 0; stage < 5; ++stage) {
+        int offset = 1 << stage;
+        bool do_shift = (shift_amt >> stage) & 1;
+        for (int i = 0; i < 32; ++i) {
+            s[stage+1][i] = do_shift ? (i >= offset ? s[stage][i - offset] : false) : s[stage][i];
+        }
+    }
+    return s[5];
 }
 
 bitset<32> ALU::shift_LSR(const bitset<32>& a, uint32_t shift_amt) const {
-    bitset<32> res;
-    for (int i = 0; i < 32; ++i) res[i] = (i + shift_amt < 32) ? a[i + shift_amt] : false;
-    return res;
+    bitset<32> s[6];
+    s[0] = a;
+    for (int stage = 0; stage < 5; ++stage) {
+        int offset = 1 << stage;
+        bool do_shift = (shift_amt >> stage) & 1;
+        for (int i = 0; i < 32; ++i) {
+            s[stage+1][i] = do_shift ? (i + offset < 32 ? s[stage][i + offset] : false) : s[stage][i];
+        }
+    }
+    return s[5];
 }
 
 bitset<32> ALU::shift_ASR(const bitset<32>& a, uint32_t shift_amt) const {
-    bitset<32> res;
-    bool sign_bit = a[31];
-    for (int i = 0; i < 32; ++i) res[i] = (i + shift_amt < 32) ? a[i + shift_amt] : sign_bit;
-    return res;
-}
-
-// ------------------------------------------
-// 4. BLOCK CARRY LOOKAHEAD (ADD/SUB)
-// ------------------------------------------
-void ALU::cla_4bit_block(const bool a[4], const bool b[4], bool cin, bool s[4], bool& cout) const {
-    bool g[4], p[4];
-    for(int i = 0; i < 4; i++) {
-        g[i] = gate_AND(a[i], b[i]);
-        p[i] = gate_XOR(a[i], b[i]);
-    }
-
-    bool c1 = gate_OR(g[0], gate_AND(p[0], cin));
-    bool c2 = gate_OR(g[1], gate_OR(gate_AND(p[1], g[0]), gate_AND(p[1], gate_AND(p[0], cin))));
-    bool c3 = gate_OR(g[2], gate_OR(gate_AND(p[2], g[1]), gate_OR(gate_AND(p[2], gate_AND(p[1], g[0])), gate_AND(p[2], gate_AND(p[1], gate_AND(p[0], cin))))));
-    
-    bool c4_t1 = gate_AND(p[3], g[2]), c4_t2 = gate_AND(p[3], gate_AND(p[2], g[1]));
-    bool c4_t3 = gate_AND(p[3], gate_AND(p[2], gate_AND(p[1], g[0])));
-    bool c4_t4 = gate_AND(p[3], gate_AND(p[2], gate_AND(p[1], gate_AND(p[0], cin))));
-    cout = gate_OR(g[3], gate_OR(c4_t1, gate_OR(c4_t2, gate_OR(c4_t3, c4_t4))));
-
-    s[0] = gate_XOR(p[0], cin);
-    s[1] = gate_XOR(p[1], c1);
-    s[2] = gate_XOR(p[2], c2);
-    s[3] = gate_XOR(p[3], c3);
-}
-
-bitset<32> ALU::cla_ADD(const bitset<32>& a, const bitset<32>& b, bool cin, bool& cout, bool& overflow) const {
-    bitset<32> sum;
-    bool current_carry = cin;
-
-    for (int i = 0; i < 32; i += 4) {
-        bool a_block[4] = {a[i], a[i+1], a[i+2], a[i+3]};
-        bool b_block[4] = {b[i], b[i+1], b[i+2], b[i+3]};
-        bool s_block[4], next_carry;
-        
-        cla_4bit_block(a_block, b_block, current_carry, s_block, next_carry);
-        
-        sum[i] = s_block[0]; sum[i+1] = s_block[1]; 
-        sum[i+2] = s_block[2]; sum[i+3] = s_block[3];
-        
-        if (i == 28) {
-            bool p_28 = gate_XOR(a_block[0], b_block[0]), g_28 = gate_AND(a_block[0], b_block[0]);
-            bool p_29 = gate_XOR(a_block[1], b_block[1]), g_29 = gate_AND(a_block[1], b_block[1]);
-            bool p_30 = gate_XOR(a_block[2], b_block[2]), g_30 = gate_AND(a_block[2], b_block[2]);
-
-            bool c1 = gate_OR(g_28, gate_AND(p_28, current_carry));
-            bool c2 = gate_OR(g_29, gate_OR(gate_AND(p_29, g_28), gate_AND(p_29, gate_AND(p_28, current_carry))));
-            bool c3 = gate_OR(g_30, gate_OR(gate_AND(p_30, g_29), gate_OR(gate_AND(p_30, gate_AND(p_29, g_28)), gate_AND(p_30, gate_AND(p_29, gate_AND(p_28, current_carry))))));
-            
-            overflow = gate_XOR(c3, next_carry); 
+    bitset<32> s[6];
+    s[0] = a;
+    bool sign = a[31];
+    for (int stage = 0; stage < 5; ++stage) {
+        int offset = 1 << stage;
+        bool do_shift = (shift_amt >> stage) & 1;
+        for (int i = 0; i < 32; ++i) {
+            s[stage+1][i] = do_shift ? (i + offset < 32 ? s[stage][i + offset] : sign) : s[stage][i];
         }
-        current_carry = next_carry;
     }
-    cout = current_carry;
+    return s[5];
+}
+
+// ==========================================
+// 4. KOGGE-STONE PARALLEL PREFIX ADDER
+// ==========================================
+bitset<32> ALU::ks_ADD(const bitset<32>& a, const bitset<32>& b, bool cin, bool& cout, bool& overflow) const {
+    bool p[6][32]; 
+    bool g[6][32]; 
+
+    for (int i = 0; i < 32; ++i) {
+        p[0][i] = gate_XOR(a[i], b[i]);
+        g[0][i] = gate_AND(a[i], b[i]);
+    }
+
+    for (int stage = 1; stage <= 5; ++stage) {
+        int dist = 1 << (stage - 1);
+        for (int i = 0; i < 32; ++i) {
+            if (i >= dist) {
+                g[stage][i] = gate_OR(g[stage-1][i], gate_AND(p[stage-1][i], g[stage-1][i - dist]));
+                p[stage][i] = gate_AND(p[stage-1][i], p[stage-1][i - dist]);
+            } else {
+                g[stage][i] = g[stage-1][i];
+                p[stage][i] = p[stage-1][i];
+            }
+        }
+    }
+
+    bitset<32> sum;
+    bool c[32];
+    for (int i = 0; i < 32; ++i) {
+        bool prev_c = (i == 0) ? cin : c[i-1];
+        c[i] = gate_OR(g[5][i], gate_AND(p[5][i], cin)); 
+        sum[i] = gate_XOR(p[0][i], prev_c);
+    }
+    
+    cout = c[31];
+    overflow = gate_XOR(c[31], c[30]);
     return sum;
 }
 
-bitset<32> ALU::cla_SUB(const bitset<32>& a, const bitset<32>& b, bool& cout, bool& overflow) const {
-    return cla_ADD(a, logic_NOT(b), true, cout, overflow);
+bitset<32> ALU::ks_SUB(const bitset<32>& a, const bitset<32>& b, bool& cout, bool& overflow) const {
+    return ks_ADD(a, logic_NOT(b), true, cout, overflow);
 }
 
 bitset<32> ALU::twos_complement(const bitset<32>& a) const {
     bool dummy_cout, dummy_ovf;
-    bitset<32> zero_bits;
-    return cla_SUB(zero_bits, a, dummy_cout, dummy_ovf);
+    return ks_SUB(bitset<32>(0), a, dummy_cout, dummy_ovf);
 }
 
-// ------------------------------------------
-// 5. ALGORITHMS (Booth & Restoring)
-// ------------------------------------------
-bitset<32> ALU::algo_BoothMul(const bitset<32>& a, const bitset<32>& b) const {
-    bitset<32> A, Q = b, M = a; 
+// ==========================================
+// 5. ADVANCED HARDWARE ALGORITHMS
+// ==========================================
+bitset<32> ALU::algo_Radix4BoothMul(const bitset<32>& a, const bitset<32>& b) const {
+    bitset<32> A = 0;
+    bitset<32> Q = b;
+    bitset<32> M = a;
     bool q_minus_1 = false, dummy_cout, dummy_ovf;
 
-    for (int i = 0; i < 32; ++i) {
-        if (Q[0] == true && q_minus_1 == false) A = cla_SUB(A, M, dummy_cout, dummy_ovf);
-        else if (Q[0] == false && q_minus_1 == true) A = cla_ADD(A, M, false, dummy_cout, dummy_ovf);
+    for (int i = 0; i < 16; ++i) {
+        uint8_t window = (Q[1] << 2) | (Q[0] << 1) | q_minus_1;
+        bitset<32> addend = 0;
+        
+        switch (window) {
+            case 1: case 2: addend = M; A = ks_ADD(A, addend, false, dummy_cout, dummy_ovf); break;
+            case 3:         addend = shift_LSL(M, 1); A = ks_ADD(A, addend, false, dummy_cout, dummy_ovf); break; 
+            case 4:         addend = shift_LSL(M, 1); A = ks_SUB(A, addend, dummy_cout, dummy_ovf); break; 
+            case 5: case 6: addend = M; A = ks_SUB(A, addend, dummy_cout, dummy_ovf); break;
+            case 0: case 7: break; 
+        }
 
-        q_minus_1 = Q[0];
-        bool a_lsb = A[0];
-        Q = shift_LSR(Q, 1);
-        Q[31] = a_lsb; 
-        A = shift_ASR(A, 1); 
+        q_minus_1 = Q[1];
+        bool a_lsb_0 = A[0], a_lsb_1 = A[1];
+        Q = shift_LSR(Q, 2);
+        Q[31] = a_lsb_1; Q[30] = a_lsb_0;
+        A = shift_ASR(A, 2); 
     }
     return Q; 
 }
 
-pair<bitset<32>, bitset<32>> ALU::algo_UnsignedRestoringDiv(const bitset<32>& dividend, const bitset<32>& divisor) const {
-    bitset<32> A, Q = dividend, M = divisor;
+pair<bitset<32>, bitset<32>> ALU::algo_NonRestoringDiv(const bitset<32>& dividend, const bitset<32>& divisor) const {
+    bitset<32> A = 0, Q = dividend, M = divisor;
     bool dummy_cout, dummy_ovf;
 
     for (int i = 0; i < 32; ++i) {
-        bool q_msb = Q[31];
+        bool a_sign = A[31];
+        
         A = shift_LSL(A, 1);
-        A[0] = q_msb;
+        A[0] = Q[31];
         Q = shift_LSL(Q, 1);
-        
-        A = cla_SUB(A, M, dummy_cout, dummy_ovf);
-        
-        if (A[31] == true) { 
-            A = cla_ADD(A, M, false, dummy_cout, dummy_ovf);
-            Q[0] = false;
-        } else {
-            Q[0] = true;
-        }
+
+        if (a_sign == false) A = ks_SUB(A, M, dummy_cout, dummy_ovf);
+        else                 A = ks_ADD(A, M, false, dummy_cout, dummy_ovf);
+
+        Q[0] = gate_NOT(A[31]); 
     }
-    return {Q, A};
+
+    if (A[31] == true) A = ks_ADD(A, M, false, dummy_cout, dummy_ovf);
+    return {Q, A}; 
 }
 
-// ------------------------------------------
+// ==========================================
 // 6. PIPELINE ENGINE 
-// ------------------------------------------
+// ==========================================
 bool ALU::isZero(const bitset<32>& val) const {
-    for (int i = 0; i < 32; ++i) {
-        if (val[i] == true) return false;
-    }
+    for (int i = 0; i < 32; ++i) if (val[i]) return false;
     return true;
 }
 
-void ALU::updateStandardFlags(const bitset<32>& res, ALUFlags& f, bool ovf_in) const {
-    f.zero = isZero(res);
-    f.negative = res[31];
-    f.overflow = ovf_in;
-    
-    f.E = f.zero; 
-    f.GT = (f.negative == f.overflow) && !f.zero; 
+void ALU::updateStandardFlags(const bitset<32>& res, AluResult& out, bool cout, bool ovf_in) const {
+    out.zero = isZero(res);
+    out.negative = res[31];
+    out.carry = cout;
+    out.overflow = ovf_in;
 }
 
-AluResult ALU::execute(ALUOp op, uint32_t a, uint32_t b) const {
-    AluResult output;
-    output.flags.reset();
+AluResult ALU::execute(AluOp op, Word a, Word b) const {
+    AluResult out{0, false, false, false, false};
     
-    bitset<32> wires_a(a);
-    bitset<32> wires_b(b);
-    bitset<32> wires_out;
-
+    bitset<32> wires_a(a), wires_b(b), wires_out(0);
     bool cout = false, ovf = false;
 
     switch (op) {
-        case ALUOp::ADD:
-            wires_out = cla_ADD(wires_a, wires_b, false, cout, ovf);
-            output.flags.carry = cout;
-            updateStandardFlags(wires_out, output.flags, ovf);
+        case AluOp::ADD:
+            wires_out = ks_ADD(wires_a, wires_b, false, cout, ovf);
+            updateStandardFlags(wires_out, out, cout, ovf);
             break;
 
-        case ALUOp::SUB:
-        case ALUOp::CMP:
-            wires_out = cla_SUB(wires_a, wires_b, cout, ovf);
-            output.flags.carry = gate_NOT(cout); 
-            updateStandardFlags(wires_out, output.flags, ovf);
+        case AluOp::SUB:
+            wires_out = ks_SUB(wires_a, wires_b, cout, ovf);
+            updateStandardFlags(wires_out, out, gate_NOT(cout), ovf); 
             break;
 
-        case ALUOp::MUL: 
-            wires_out = algo_BoothMul(wires_a, wires_b);
-            updateStandardFlags(wires_out, output.flags, false);
+        case AluOp::MUL: 
+            wires_out = algo_Radix4BoothMul(wires_a, wires_b);
+            updateStandardFlags(wires_out, out, false, false);
             break;
 
-        case ALUOp::DIV:
-        case ALUOp::MOD: {
-            if (isZero(wires_b)) throw runtime_error("ALU Exception: Div by Zero");
+        case AluOp::DIV:
+        case AluOp::MOD: {
+            if (isZero(wires_b)) {
+                // Halts pipeline per Paras's memory safety specifications
+                throw RuntimeException{ExceptionCode::DIV_BY_ZERO, 0};
+            }
             
             bool sign_a = wires_a[31], sign_b = wires_b[31];
             bitset<32> abs_a = sign_a ? twos_complement(wires_a) : wires_a;
             bitset<32> abs_b = sign_b ? twos_complement(wires_b) : wires_b;
 
-            auto result_pair = algo_UnsignedRestoringDiv(abs_a, abs_b);
+            auto res_pair = algo_NonRestoringDiv(abs_a, abs_b);
             
-            if (op == ALUOp::DIV) {
-                wires_out = (sign_a != sign_b) ? twos_complement(result_pair.first) : result_pair.first;
+            if (op == AluOp::DIV) {
+                wires_out = (sign_a != sign_b) ? twos_complement(res_pair.first) : res_pair.first;
             } else {
-                wires_out = sign_a ? twos_complement(result_pair.second) : result_pair.second;
+                wires_out = sign_a ? twos_complement(res_pair.second) : res_pair.second;
             }
-            updateStandardFlags(wires_out, output.flags, false);
+            updateStandardFlags(wires_out, out, false, false);
             break;
         }
 
-        case ALUOp::AND: wires_out = logic_AND(wires_a, wires_b); updateStandardFlags(wires_out, output.flags, false); break;
-        case ALUOp::OR:  wires_out = logic_OR(wires_a, wires_b);  updateStandardFlags(wires_out, output.flags, false); break;
-        case ALUOp::XOR: wires_out = logic_XOR(wires_a, wires_b); updateStandardFlags(wires_out, output.flags, false); break;
+        case AluOp::AND: wires_out = logic_AND(wires_a, wires_b); updateStandardFlags(wires_out, out, false, false); break;
+        case AluOp::OR:  wires_out = logic_OR(wires_a,  wires_b); updateStandardFlags(wires_out, out, false, false); break;
+        case AluOp::XOR: wires_out = logic_XOR(wires_a, wires_b); updateStandardFlags(wires_out, out, false, false); break;
         
-        case ALUOp::NOT: wires_out = logic_NOT(wires_b); updateStandardFlags(wires_out, output.flags, false); break;
+        case AluOp::LSL: wires_out = shift_LSL(wires_a, b & 0x1F); updateStandardFlags(wires_out, out, false, false); break;
+        case AluOp::LSR: wires_out = shift_LSR(wires_a, b & 0x1F); updateStandardFlags(wires_out, out, false, false); break;
+        case AluOp::ASR: wires_out = shift_ASR(wires_a, b & 0x1F); updateStandardFlags(wires_out, out, false, false); break;
 
-        case ALUOp::LSL: wires_out = shift_LSL(wires_a, b & 0x1F); updateStandardFlags(wires_out, output.flags, false); break;
-        case ALUOp::LSR: wires_out = shift_LSR(wires_a, b & 0x1F); updateStandardFlags(wires_out, output.flags, false); break;
-        case ALUOp::ASR: wires_out = shift_ASR(wires_a, b & 0x1F); updateStandardFlags(wires_out, output.flags, false); break;
+        case AluOp::CMP:
+            wires_out = ks_SUB(wires_a, wires_b, cout, ovf);
+            updateStandardFlags(wires_out, out, gate_NOT(cout), ovf);
+            wires_out.reset(); 
+            break;
 
-        case ALUOp::PASS_B: wires_out = wires_b; updateStandardFlags(wires_out, output.flags, false); break;
+        case AluOp::NOT: 
+            wires_out = logic_NOT(wires_b); 
+            updateStandardFlags(wires_out, out, false, false); 
+            break;
 
-        case ALUOp::NONE:
+        case AluOp::PASS_A: 
+            wires_out = wires_a; 
+            updateStandardFlags(wires_out, out, false, false); 
+            break;
+
+        case AluOp::PASS_B: 
+            wires_out = wires_b; 
+            updateStandardFlags(wires_out, out, false, false); 
+            break;
+
+        case AluOp::NOP:
         default:
             wires_out.reset();
             break;
     }
 
-    output.result = static_cast<uint32_t>(wires_out.to_ulong());
-    return output;
+    out.value = static_cast<Word>(wires_out.to_ulong());
+    return out;
 }
