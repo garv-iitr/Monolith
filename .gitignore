@@ -8,4 +8,7 @@ build*/
 .cache/
 compile_commands.json
 .commandcode
-.vscode/
+.vscode/test_sg
+*.o
+test_sg
+demo_viz
