@@ -17,18 +17,18 @@ option(RISC201_TUI "Build the FTXUI terminal-UI debugger (fetches FTXUI)" ON)
 add_library(risc201_config INTERFACE)
 target_include_directories(risc201_config INTERFACE
   ${CMAKE_CURRENT_SOURCE_DIR}
-  "${CMAKE_CURRENT_SOURCE_DIR}/control unit")
+  "${CMAKE_CURRENT_SOURCE_DIR}/control_unit")
 target_compile_definitions(risc201_config INTERFACE
   RISC201_WORD_BITS=${RISC201_WORD_BITS})
 
 add_library(risc201_cu STATIC
-  "control unit/common/internal_registers.cpp"
-  "control unit/datapath/datapath.cpp"
-  "control unit/datapath/memory_unit.cpp"
-  "control unit/microcode/microcode_program.cpp"
-  "control unit/microcode/h_assembler.cpp"
-  "control unit/microcode/v_assembler.cpp"
-  "control unit/vertical/v_decoder.cpp")
+  "control_unit/common/internal_registers.cpp"
+  "control_unit/datapath/datapath.cpp"
+  "control_unit/datapath/memory_unit.cpp"
+  "control_unit/microcode/microcode_program.cpp"
+  "control_unit/microcode/h_assembler.cpp"
+  "control_unit/microcode/v_assembler.cpp"
+  "control_unit/vertical/v_decoder.cpp")
 target_link_libraries(risc201_cu PUBLIC risc201_config)
 target_compile_options(risc201_cu PRIVATE -Wall -Wextra)
 
@@ -37,7 +37,13 @@ add_library(risc201_alu STATIC
 target_link_libraries(risc201_alu PUBLIC risc201_config)
 target_compile_options(risc201_alu PRIVATE -Wall -Wextra)
 
-add_executable(risc201-cu-demo "control unit/main.cpp")
+add_library(risc201_safety STATIC
+  memory_safety/stack_guard.cpp
+  memory_safety/visualizer.cpp)
+target_link_libraries(risc201_safety PUBLIC risc201_config)
+target_compile_options(risc201_safety PRIVATE -Wall -Wextra)
+
+add_executable(risc201-cu-demo "control_unit/main.cpp")
 target_link_libraries(risc201-cu-demo PRIVATE risc201_cu)
 target_compile_options(risc201-cu-demo PRIVATE -Wall -Wextra)
 
@@ -67,5 +73,14 @@ add_executable(risc201-tests
 target_link_libraries(risc201-tests PRIVATE risc201_cu risc201_alu)
 target_compile_options(risc201-tests PRIVATE -Wall -Wextra)
 
+add_executable(stack-guard-test tests/test_stack_guard.cpp)
+target_link_libraries(stack-guard-test PRIVATE risc201_safety)
+target_compile_options(stack-guard-test PRIVATE -Wall -Wextra)
+
+add_executable(stack-visualizer-demo tests/demo_visualizer.cpp)
+target_link_libraries(stack-visualizer-demo PRIVATE risc201_safety)
+target_compile_options(stack-visualizer-demo PRIVATE -Wall -Wextra)
+
 enable_testing()
 add_test(NAME risc201-tests COMMAND risc201-tests)
+add_test(NAME stack-guard-test COMMAND stack-guard-test)

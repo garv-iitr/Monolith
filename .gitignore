@@ -9,3 +9,7 @@ build*/
 compile_commands.json
 .commandcode
 .vscode/
+.agents/
+*.o
+test_sg
+demo_viz
