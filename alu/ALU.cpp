@@ -3,9 +3,7 @@
 using namespace std;
 using namespace risc201::cu;
 
-// ==========================================
-// 1. PRIMITIVE GATES
-// ==========================================
+// basic gates, no bitwise ops
 bool ALU::gate_NOT(bool a) const { return (a == true) ? false : true; }
 bool ALU::gate_NAND(bool a, bool b) const { return (a == true && b == true) ? false : true; }
 bool ALU::gate_NOR(bool a, bool b) const { return (a == false && b == false) ? true : false; }
@@ -13,9 +11,6 @@ bool ALU::gate_AND(bool a, bool b) const { return gate_NOT(gate_NAND(a, b)); }
 bool ALU::gate_OR(bool a, bool b)  const { return gate_NOT(gate_NOR(a, b)); }
 bool ALU::gate_XOR(bool a, bool b) const { return gate_OR(gate_AND(a, gate_NOT(b)), gate_AND(gate_NOT(a), b)); }
 
-// ==========================================
-// 2. PARALLEL BITWISE LOGIC
-// ==========================================
 bitset<32> ALU::logic_AND(const bitset<32>& a, const bitset<32>& b) const {
     bitset<32> res;
     for (int i = 0; i < 32; ++i) res[i] = gate_AND(a[i], b[i]);
@@ -37,9 +32,6 @@ bitset<32> ALU::logic_NOT(const bitset<32>& a) const {
     return res;
 }
 
-// ==========================================
-// 3. LOGARITHMIC BARREL SHIFTERS
-// ==========================================
 bitset<32> ALU::shift_LSL(const bitset<32>& a, uint32_t shift_amt) const {
     bitset<32> s[6];
     s[0] = a;
@@ -80,9 +72,7 @@ bitset<32> ALU::shift_ASR(const bitset<32>& a, uint32_t shift_amt) const {
     return s[5];
 }
 
-// ==========================================
-// 4. KOGGE-STONE PARALLEL PREFIX ADDER
-// ==========================================
+// kogge stone adder
 bitset<32> ALU::ks_ADD(const bitset<32>& a, const bitset<32>& b, bool cin, bool& cout, bool& overflow) const {
     bool p[6][32]; 
     bool g[6][32]; 
@@ -127,9 +117,7 @@ bitset<32> ALU::twos_complement(const bitset<32>& a) const {
     return ks_SUB(bitset<32>(0), a, dummy_cout, dummy_ovf);
 }
 
-// ==========================================
-// 5. ADVANCED HARDWARE ALGORITHMS
-// ==========================================
+// booth and non restoring div
 bitset<32> ALU::algo_Radix4BoothMul(const bitset<32>& a, const bitset<32>& b) const {
     bitset<32> A = 0;
     bitset<32> Q = b;
@@ -178,9 +166,6 @@ pair<bitset<32>, bitset<32>> ALU::algo_NonRestoringDiv(const bitset<32>& dividen
     return {Q, A}; 
 }
 
-// ==========================================
-// 6. PIPELINE ENGINE 
-// ==========================================
 bool ALU::isZero(const bitset<32>& val) const {
     for (int i = 0; i < 32; ++i) if (val[i]) return false;
     return true;
@@ -218,7 +203,7 @@ AluResult ALU::execute(AluOp op, Word a, Word b) const {
         case AluOp::DIV:
         case AluOp::MOD: {
             if (isZero(wires_b)) {
-                // Halts pipeline per Paras's memory safety specifications
+                // div by zero
                 throw RuntimeException{ExceptionCode::DIV_BY_ZERO, 0};
             }
             
