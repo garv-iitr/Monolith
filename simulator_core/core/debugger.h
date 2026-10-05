@@ -9,8 +9,7 @@
 
 namespace risc201 {
 
-// Interactive debugger over a Cpu: instruction / micro-cycle stepping,
-// run-to-completion and run-to-breakpoint, breakpoints and register watchpoints.
+// interactive debugger on top of the cpu
 class Debugger {
  public:
   explicit Debugger(std::size_t mem_words = 1024) : cpu_(mem_words) {}
