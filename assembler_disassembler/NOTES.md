@@ -8,37 +8,45 @@ Simulator teammates should read this carefully.
 
 ## 1. CALL / RET Semantics (Important for Simulator)
 
-Following SimpleRISC conventions:
+> **Note on Encoding vs. Execution:**
+> This design choice affects only how a CPU simulator executes `CALL` and `RET` at runtime, not how the assembler encodes them. The assembler's encoding is unchanged: `CALL` is encoded as a Format 5 instruction (opcode 0x25, same layout as `B`), and `RET` is encoded as a Format 6 instruction with no operands (opcode 0x26).
 
+### Option A: Hardware & Professor's Specification (Default)
 - **CALL label**:
-  - Sets `ra` (r15) = address of the CALL instruction **+ 4** (the
-    return address, i.e., the next instruction).
-  - Then jumps to `label` (PC-relative 26-bit word offset, same as B).
-  - **No hardware stack push occurs.** The return address is solely in ra.
-  - Nested calls require the callee to explicitly save ra (e.g., `push ra`).
-
+  - Pushes the return address (address of the `CALL` instruction + 4) onto the stack:
+    `sp = sp - 4`, then `Mem[sp] = return address`.
+  - Jumps to `label` (PC+4 relative 26-bit word offset, same as `B`).
+  - The stack is full-descending with 4-byte words.
+  - Register `r15` (`ra`) is just an ordinary register alias with no hardware role.
 - **RET**:
-  - Sets PC = ra (r15).
-  - No stack pop. If ra was clobbered, behaviour is undefined.
+  - Pops the return address from the stack into `PC`:
+    `PC = Mem[sp]`, then `sp = sp + 4`.
 
-The assembler encodes CALL as a Format5 instruction (same layout as B).
-The simulator is responsible for the ra side-effect at execution time.
+### Option B: Sarangi / SimpleRISC Style (Alternative)
+- **CALL label**:
+  - Sets `ra` (r15) = address of the `CALL` instruction + 4.
+  - Jumps to `label` (PC+4 relative 26-bit word offset).
+  - There is no hardware stack push or pop.
+- **RET**:
+  - Sets `PC = ra` (r15).
+  - No stack pop occurs.
+- **Hardware Team Difference:**
+  - Option B differs from the hardware team's implementation and the professor's specification, which both use the hardware stack (Option A).
 
 ---
 
 ## 2. Branch Offset Convention
 
-Branch offset is **PC-relative to the branch instruction's OWN address**,
-not to PC+4. This means:
+Branch offset is **PC+4 relative**. This means:
 
 ```
-offset = (target_byte_address − branch_byte_address) / 4
+offset = (target_byte_address − (branch_byte_address + 4)) / 4
 ```
 
-A branch to the next instruction has offset = +1.
-A branch to itself (infinite loop) has offset = 0.
+A branch to the next instruction has offset = 0.
+A branch to itself (infinite loop) has offset = -1.
 
-This differs from ARM and MIPS conventions but matches SimpleRISC.
+This matches standard pipelined CPU architectures where PC has already moved to the next instruction (PC+4) when the branch executes.
 
 ---
 

@@ -44,6 +44,7 @@ struct AssemblyResult {
     std::vector<uint32_t> data;    // .data section words (in order)
     SymbolTable           symbols; // all labels and .equ constants
     std::vector<std::string> errors;   // "file:line: error: message"
+    std::vector<std::string> warnings; // "file:line: warning: message"
     std::string           listing; // formatted listing (if requested)
     uint32_t              textBase; // actual .text base used
     uint32_t              dataBase; // actual .data base used
@@ -94,9 +95,11 @@ private:
     std::string filename_;
     AssemblyOptions opts_;
     std::vector<std::string> errors_;
+    std::vector<std::string> warnings_;
 
     // ---- Helpers --------------------------------------------
     void addError(int line, const std::string& msg);
+    void addWarning(int line, const std::string& msg);
 
     // Tokenise one source line: return {label, mnemonic, operand_tokens}
     // Strips comments, extracts leading label.

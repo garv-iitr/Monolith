@@ -71,8 +71,11 @@ static uint32_t parseAddr(const std::string& s) {
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         std::cerr << "Usage: risc201asm <input.asm> [-o <output>] [--format hex|bin|raw]\n"
-                  << "                  [--list <file>] [--symbols]\n"
-                  << "                  [--text-base <addr>] [--data-base <addr>]\n";
+                  << "                  [--list <file>] [--symbols] [--image]\n"
+                  << "                  [--text-base <addr>] [--data-base <addr>]\n"
+                  << "Note: --image creates a single combined file (text + zero padding + data).\n"
+                  << "      The default data base 0x10000 makes the image 64 KB of mostly zeros;\n"
+                  << "      use --data-base 0x1000 (or similar) to keep it small.\n";
         return 1;
     }
 
@@ -81,6 +84,7 @@ int main(int argc, char* argv[]) {
     std::string format = "hex";
     std::string listFile;
     bool printSymbols = false;
+    bool imageMode = false;
     AssemblyOptions opts;
 
     // ---- Argument parsing -----------------------------------
@@ -106,6 +110,8 @@ int main(int argc, char* argv[]) {
             listFile = argv[i];
         } else if (arg == "--symbols") {
             printSymbols = true;
+        } else if (arg == "--image") {
+            imageMode = true;
         } else if (arg == "--text-base") {
             if (++i >= argc) { std::cerr << "--text-base requires an address\n"; return 1; }
             opts.textBase = parseAddr(argv[i]);
@@ -141,6 +147,10 @@ int main(int argc, char* argv[]) {
     Assembler assembler;
     AssemblyResult result = assembler.assemble(source, inputFile, opts);
 
+    // ---- Print warnings ------------------------------------
+    for (const auto& w : result.warnings)
+        std::cerr << w << "\n";
+
     // ---- Print errors --------------------------------------
     if (result.hasErrors()) {
         for (const auto& err : result.errors)
@@ -148,8 +158,21 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // ---- Write .text output --------------------------------
-    {
+    // ---- Write output --------------------------------------
+    if (imageMode) {
+        // Build one word list that starts at the text base address:
+        // the text words, then zero words until the data base address, then the data words.
+        std::vector<uint32_t> imageWords = result.code;
+        size_t dataStart = (result.dataBase - result.textBase) / 4;
+        if (!result.data.empty()) {
+            if (imageWords.size() < dataStart) {
+                imageWords.resize(dataStart, 0);
+            }
+            imageWords.insert(imageWords.end(), result.data.begin(), result.data.end());
+        } else {
+            dataStart = imageWords.size();
+        }
+
         std::ios::openmode mode = std::ios::out;
         if (format == "raw") mode |= std::ios::binary;
         std::ofstream outF(outputFile, mode);
@@ -157,30 +180,49 @@ int main(int argc, char* argv[]) {
             std::cerr << "Cannot open output file: " << outputFile << "\n";
             return 1;
         }
-        writeWords(outF, result.code, format);
-    }
+        writeWords(outF, imageWords, format);
 
-    // ---- Write .data output (if non-empty) -----------------
-    if (!result.data.empty()) {
-        // Derive data output filename: e.g., prog.hex -> prog_data.hex
-        size_t dot = outputFile.rfind('.');
-        std::string stem = (dot != std::string::npos)
-            ? outputFile.substr(0, dot) : outputFile;
-        std::string ext  = (dot != std::string::npos)
-            ? outputFile.substr(dot + 1) : format;
-        std::string dataOut = stem + "_data." + ext;
-
-        std::ios::openmode mode = std::ios::out;
-        if (format == "raw") mode |= std::ios::binary;
-        std::ofstream outF(dataOut, mode);
-        if (!outF.is_open()) {
-            std::cerr << "Cannot open data output file: " << dataOut << "\n";
-            return 1;
+        std::ostringstream baseOss;
+        baseOss << "0x" << std::uppercase << std::hex
+                << std::setfill('0') << std::setw(8) << result.textBase;
+        std::cout << "image: base " << baseOss.str() << ", "
+                  << std::dec << imageWords.size() << " words (data starts at word "
+                  << dataStart << ")\n";
+    } else {
+        // ---- Write .text output --------------------------------
+        {
+            std::ios::openmode mode = std::ios::out;
+            if (format == "raw") mode |= std::ios::binary;
+            std::ofstream outF(outputFile, mode);
+            if (!outF.is_open()) {
+                std::cerr << "Cannot open output file: " << outputFile << "\n";
+                return 1;
+            }
+            writeWords(outF, result.code, format);
         }
-        writeWords(outF, result.data, format);
-        std::cout << "Data section written to: " << dataOut
-                  << " (base 0x" << std::uppercase << std::hex
-                  << std::setfill('0') << std::setw(8) << result.dataBase << ")\n";
+
+        // ---- Write .data output (if non-empty) -----------------
+        if (!result.data.empty()) {
+            // Derive data output filename: e.g., prog.hex -> prog_data.hex
+            size_t dot = outputFile.rfind('.');
+            std::string stem = (dot != std::string::npos)
+                ? outputFile.substr(0, dot) : outputFile;
+            std::string ext  = (dot != std::string::npos)
+                ? outputFile.substr(dot + 1) : format;
+            std::string dataOut = stem + "_data." + ext;
+
+            std::ios::openmode mode = std::ios::out;
+            if (format == "raw") mode |= std::ios::binary;
+            std::ofstream outF(dataOut, mode);
+            if (!outF.is_open()) {
+                std::cerr << "Cannot open data output file: " << dataOut << "\n";
+                return 1;
+            }
+            writeWords(outF, result.data, format);
+            std::cout << "Data section written to: " << dataOut
+                      << " (base 0x" << std::uppercase << std::hex
+                      << std::setfill('0') << std::setw(8) << result.dataBase << ")\n";
+        }
     }
 
     // ---- Write listing file --------------------------------

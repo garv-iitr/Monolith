@@ -42,9 +42,15 @@ std::string Assembler::trim(const std::string& s) {
 }
 
 // ============================================================
-// stripComment — remove trailing comment starting with @, ;, //
+// stripComment — remove comments (# at line start, or trailing @, ;, //)
 // ============================================================
 std::string Assembler::stripComment(const std::string& line) {
+    // If the first non-space character is '#', the whole line is a comment
+    size_t firstNonSpace = line.find_first_not_of(" \t\r\n");
+    if (firstNonSpace != std::string::npos && line[firstNonSpace] == '#') {
+        return "";
+    }
+
     bool inSingleQuote = false; // not used in RISC201 but defensive
     for (size_t i = 0; i < line.size(); ++i) {
         char c = line[i];
@@ -82,6 +88,12 @@ void Assembler::addError(int line, const std::string& msg) {
     std::ostringstream oss;
     oss << filename_ << ":" << line << ": error: " << msg;
     errors_.push_back(oss.str());
+}
+
+void Assembler::addWarning(int line, const std::string& msg) {
+    std::ostringstream oss;
+    oss << filename_ << ":" << line << ": warning: " << msg;
+    warnings_.push_back(oss.str());
 }
 
 // ============================================================
@@ -268,13 +280,17 @@ uint32_t Assembler::resolveValue32(const std::string& tok,
     }
 
     // Try parsing as a number
+    int64_t v = 0;
     try {
-        int64_t v = parseNumber(s);
-        if (neg) v = -v;
-        return static_cast<uint32_t>(v);
+        v = parseNumber(s);
     } catch (...) {
         throw std::runtime_error("undefined label or constant '" + tok + "'");
     }
+    if (neg) v = -v;
+    if (v < -2147483648LL || v > 4294967295LL) {
+        throw std::runtime_error("value out of 32-bit range: '" + tok + "'");
+    }
+    return static_cast<uint32_t>(v);
 }
 
 // ============================================================
@@ -286,6 +302,7 @@ AssemblyResult Assembler::assemble(const std::string& source,
     filename_ = filename;
     opts_     = opts;
     errors_.clear();
+    warnings_.clear();
 
     AssemblyResult result;
     result.textBase = opts.textBase;
@@ -445,6 +462,7 @@ AssemblyResult Assembler::assemble(const std::string& source,
             try {
                 int64_t n = parseNumber(pl.tokens[0]);
                 if (n < 0) { addError(lineNum, ".space count must be non-negative"); continue; }
+                if (n % 4 != 0) { addError(lineNum, ".space count must be a multiple of 4 bytes"); continue; }
                 uint32_t& lc = (curSection == "text") ? textLC : dataLC;
                 ExpandedLine el;
                 el.kind       = LineKind::DATA_SPACE;
@@ -741,27 +759,41 @@ AssemblyResult Assembler::assemble(const std::string& source,
 
         bool isBranch = (def.fmt == FmtId::F5);
         if (isBranch) {
-            // Single operand is a label; convert to word offset
+            // Single operand is a label or ready-made numeric offset
             if (!el.tokens.empty()) {
+                std::string tok = trim(el.tokens[0]);
+                bool isPlainNum = false;
                 try {
-                    uint32_t targetAddr = resolveLabel(el.tokens[0], syms, el.srcLine);
-                    // Verify target is word-aligned
-                    if (targetAddr % 4 != 0) {
-                        addError(el.srcLine, el.mnemonic + ": branch target '"
-                                 + el.tokens[0] + "' is not word-aligned");
-                    }
-                    int64_t wordOff = (static_cast<int64_t>(targetAddr)
-                                      - static_cast<int64_t>(el.address)) / 4;
-                    if (wordOff < -(1LL << 25) || wordOff > (1LL << 25) - 1) {
-                        addError(el.srcLine, el.mnemonic + ": branch offset "
-                                 + std::to_string(wordOff) + " is out of 26-bit range");
+                    (void)parseNumber(tok);
+                    isPlainNum = true;
+                } catch (...) {
+                    isPlainNum = false;
+                }
+
+                if (isPlainNum) {
+                    resolvedTokens = { tok };
+                } else {
+                    try {
+                        uint32_t targetAddr = resolveLabel(tok, syms, el.srcLine);
+                        // Verify target is word-aligned
+                        if (targetAddr % 4 != 0) {
+                            addError(el.srcLine, el.mnemonic + ": branch target '"
+                                     + tok + "' is not word-aligned");
+                        }
+                        long long targetAddress = static_cast<long long>(targetAddr);
+                        long long thisInstructionAddress = static_cast<long long>(el.address);
+                        long long wordOff = (targetAddress - (thisInstructionAddress + 4)) / 4;
+                        if (wordOff < -33554432LL || wordOff > 33554431LL) {
+                            addError(el.srcLine, el.mnemonic + ": branch offset "
+                                     + std::to_string(wordOff) + " is out of 26-bit range");
+                            resolvedTokens = { "0" };
+                        } else {
+                            resolvedTokens = { std::to_string(wordOff) };
+                        }
+                    } catch (const std::exception& e) {
+                        addError(el.srcLine, el.mnemonic + ": " + e.what());
                         resolvedTokens = { "0" };
-                    } else {
-                        resolvedTokens = { std::to_string(wordOff) };
                     }
-                } catch (const std::exception& e) {
-                    addError(el.srcLine, el.mnemonic + ": " + e.what());
-                    resolvedTokens = { "0" };
                 }
             }
         } else {
@@ -828,6 +860,17 @@ AssemblyResult Assembler::assemble(const std::string& source,
             std::string rsvErr = fmt->validateReservedBits(fm);
             if (!rsvErr.empty())
                 addError(el.srcLine, rsvErr);
+            if (opts_.warnShiftRange && (el.mnemonic == "LSL" || el.mnemonic == "LSR" || el.mnemonic == "ASR")) {
+                if (fm.count("mode") && fm.at("mode") != 0) {
+                    int64_t val = (fm.at("mode") == 1)
+                        ? static_cast<int16_t>(fm.at("imm16"))
+                        : static_cast<uint16_t>(fm.at("imm16"));
+                    if (val < 0 || val > 31) {
+                        addWarning(el.srcLine, el.mnemonic + ": shift amount "
+                                   + std::to_string(val) + " outside range 0..31");
+                    }
+                }
+            }
         } catch (const std::exception& e) {
             addError(el.srcLine, std::string(e.what()));
         }
@@ -837,8 +880,9 @@ AssemblyResult Assembler::assemble(const std::string& source,
         listStream << listingLine(el.address, word, el.srcText) << "\n";
     }
 
-    result.errors  = errors_;
-    result.listing = listStream.str();
+    result.errors   = errors_;
+    result.warnings = warnings_;
+    result.listing  = listStream.str();
     return result;
 }
 
