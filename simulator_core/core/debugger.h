@@ -22,6 +22,11 @@ class Debugger {
     refresh();
   }
 
+  void load(Word base, const std::vector<Word>& code) {
+    cpu_.load(base, code);
+    refresh();
+  }
+
   void reset() {
     cpu_.reset();
     refresh();
