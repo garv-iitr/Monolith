@@ -32,12 +32,17 @@ add_library(risc201_cu STATIC
 target_link_libraries(risc201_cu PUBLIC risc201_config)
 target_compile_options(risc201_cu PRIVATE -Wall -Wextra)
 
+add_library(risc201_alu STATIC
+  alu/ALU.cpp)
+target_link_libraries(risc201_alu PUBLIC risc201_config)
+target_compile_options(risc201_alu PRIVATE -Wall -Wextra)
+
 add_executable(risc201-cu-demo "control unit/main.cpp")
 target_link_libraries(risc201-cu-demo PRIVATE risc201_cu)
 target_compile_options(risc201-cu-demo PRIVATE -Wall -Wextra)
 
 add_executable(risc201-sim simulator_core/main.cpp)
-target_link_libraries(risc201-sim PRIVATE risc201_cu)
+target_link_libraries(risc201-sim PRIVATE risc201_cu risc201_alu)
 target_compile_options(risc201-sim PRIVATE -Wall -Wextra)
 
 if(RISC201_TUI AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/simulator_core/ui/tui.cpp")
@@ -59,7 +64,7 @@ add_executable(risc201-tests
   tests/test_debugger.cpp
   tests/test_cu_programs.cpp
   tests/test_programs.cpp)
-target_link_libraries(risc201-tests PRIVATE risc201_cu)
+target_link_libraries(risc201-tests PRIVATE risc201_cu risc201_alu)
 target_compile_options(risc201-tests PRIVATE -Wall -Wextra)
 
 enable_testing()
