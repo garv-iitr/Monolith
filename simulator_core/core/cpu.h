@@ -24,6 +24,7 @@ class Cpu {
   }
 
   void load(const std::vector<Word>& code) { dp_.mem.load_words(0, code); }
+  void load(Word base, const std::vector<Word>& code) { dp_.mem.load_words(base, code); }
 
   bool step() {
     if (dp_.halted) return false;

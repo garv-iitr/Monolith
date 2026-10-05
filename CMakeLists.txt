@@ -43,6 +43,23 @@ add_library(risc201_safety STATIC
 target_link_libraries(risc201_safety PUBLIC risc201_config)
 target_compile_options(risc201_safety PRIVATE -Wall -Wextra)
 
+add_library(risc201_asm STATIC
+  assembler_disassembler/isa.cpp
+  assembler_disassembler/formats.cpp
+  assembler_disassembler/macros.cpp
+  assembler_disassembler/assembler.cpp
+  assembler_disassembler/disassembler.cpp)
+target_include_directories(risc201_asm PUBLIC assembler_disassembler)
+target_compile_options(risc201_asm PRIVATE -Wall -Wextra)
+
+add_executable(risc201asm assembler_disassembler/main_asm.cpp)
+target_link_libraries(risc201asm PRIVATE risc201_asm)
+target_compile_options(risc201asm PRIVATE -Wall -Wextra)
+
+add_executable(risc201dis assembler_disassembler/main_dis.cpp)
+target_link_libraries(risc201dis PRIVATE risc201_asm)
+target_compile_options(risc201dis PRIVATE -Wall -Wextra)
+
 add_executable(risc201-cu-demo "control_unit/main.cpp")
 target_link_libraries(risc201-cu-demo PRIVATE risc201_cu)
 target_compile_options(risc201-cu-demo PRIVATE -Wall -Wextra)
@@ -69,8 +86,9 @@ add_executable(risc201-tests
   tests/test_cpu.cpp
   tests/test_debugger.cpp
   tests/test_cu_programs.cpp
-  tests/test_programs.cpp)
-target_link_libraries(risc201-tests PRIVATE risc201_cu risc201_alu)
+  tests/test_programs.cpp
+  tests/test_assembler.cpp)
+target_link_libraries(risc201-tests PRIVATE risc201_cu risc201_alu risc201_asm)
 target_compile_options(risc201-tests PRIVATE -Wall -Wextra)
 
 add_executable(stack-guard-test tests/test_stack_guard.cpp)

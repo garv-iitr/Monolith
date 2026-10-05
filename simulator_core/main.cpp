@@ -24,6 +24,11 @@ Word enc_reg(Opcode op, int rd, int rs1, int rs2) {
 
 Word enc_halt() { return static_cast<Word>(Opcode::HALT) << 26; }
 
+// text at 0, .data at 0x10000 (matches the assembler defaults)
+constexpr Word kTextBase = 0x00000000;
+constexpr Word kDataBase = 0x00010000;
+constexpr std::size_t kMemWords = 0x20000 / 4;
+
 std::vector<Word> demo_program() {
   return {
       enc_imm(Opcode::MOV, 1, 0, 6),
@@ -52,8 +57,14 @@ bool load_hex_file(const std::string& path, std::vector<Word>& out) {
   std::string line;
   while (std::getline(in, line)) {
     if (line.empty() || line[0] == '#') continue;
+    std::size_t n = 0;
     Word w = 0;
-    if (!parse_word(line, w)) {
+    try {
+      w = static_cast<Word>(std::stoull(line, &n, 16));
+    } catch (...) {
+      n = 0;
+    }
+    if (n != line.size()) {
       std::printf("  bad line: %s\n", line.c_str());
       return false;
     }
@@ -100,7 +111,7 @@ void print_help() {
       "  unwatch <reg>         stop watching a register\n"
       "  regs                  dump registers and flags\n"
       "  mem [addr] [count]    dump memory words\n"
-      "  load <file>           load hex program (one word per line)\n"
+      "  load <text> [data]    load hex program (text at 0x0, data at 0x10000)\n"
       "  demo                  reload the built-in demo program\n"
       "  reset                 reset the machine\n"
       "  help | h              this help\n"
@@ -110,7 +121,7 @@ void print_help() {
 }  // namespace
 
 int main() {
-  risc201::Debugger dbg;
+  risc201::Debugger dbg(kMemWords);
   dbg.load(demo_program());
 
   std::printf("RISC201 debugger. Type 'help' for commands.\n");
@@ -204,16 +215,30 @@ int main() {
         }
       }
     } else if (cmd == "load") {
-      std::string path;
+      std::string path, dataPath;
       if (iss >> path) {
+        iss >> dataPath;
         std::vector<Word> code;
-        if (load_hex_file(path, code)) {
-          dbg.load(code);
-          std::printf("  loaded %zu words\n", code.size());
-          print_registers(dbg);
-        } else {
+        if (!load_hex_file(path, code)) {
           std::printf("  failed to load '%s'\n", path.c_str());
+        } else {
+          dbg.load(kTextBase, code);
+          std::printf("  loaded %zu text word(s) at 0x%X\n", code.size(),
+                      static_cast<unsigned>(kTextBase));
+          if (!dataPath.empty()) {
+            std::vector<Word> data;
+            if (!load_hex_file(dataPath, data)) {
+              std::printf("  failed to load data '%s'\n", dataPath.c_str());
+            } else {
+              dbg.load(kDataBase, data);
+              std::printf("  loaded %zu data word(s) at 0x%X\n", data.size(),
+                          static_cast<unsigned>(kDataBase));
+            }
+          }
+          print_registers(dbg);
         }
+      } else {
+        std::printf("  usage: load <text.hex> [data.hex]\n");
       }
     } else if (cmd == "demo") {
       dbg.load(demo_program());
