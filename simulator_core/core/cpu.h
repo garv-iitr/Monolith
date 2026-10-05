@@ -69,6 +69,8 @@ class Cpu {
   void write_mem(Word addr, Word value) { dp_.mem.write_word(addr, value); }
 
   const ::Flags& flags() const { return dp_.regs.flags; }
+  Word pc() const { return dp_.regs.pc; }
+  Word ir() const { return dp_.regs.ir; }
 
   StateView snapshot() const {
     StateView v;
