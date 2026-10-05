@@ -14,35 +14,35 @@
 # The assembler resolves labels with this convention.
 # =============================================================================
 
-    mov  sp, #0x300       ; set up the stack
-    mov  r1, #10          ; n = 10
+    mov  sp, 0x300       ; set up the stack
+    mov  r1, 30          ; n = 10
     call fib               ; r2 = fib(10)
     nop
     st   r2, 0x100[r0]     ; store the result
     halt
 
 fib:
-    cmp  r1, #1           ; n <= 1 ?
+    cmp  r1, 1           ; n <= 1 ?
     bgt  recurse
     bne  base0            ; n == 0
-    mov  r2, #1           ; n == 1 -> result 1
+    mov  r2, 1           ; n == 1 -> result 1
     b    baseret
 base0:
-    mov  r2, #0           ; n == 0 -> result 0
+    mov  r2, 0           ; n == 0 -> result 0
 baseret:
     ret
 
 recurse:
-    sub  sp, sp, #4       ; push n
+    sub  sp, sp, 4       ; push n
     st   r1, 0[sp]
-    sub  r1, r1, #1       ; r1 = n - 1
+    sub  r1, r1, 1       ; r1 = n - 1
     call fib               ; r2 = fib(n-1)
-    sub  sp, sp, #4       ; push fib(n-1)
+    sub  sp, sp, 4       ; push fib(n-1)
     st   r2, 0[sp]
     ld   r1, 4[sp]        ; restore n
-    sub  r1, r1, #2       ; r1 = n - 2
+    sub  r1, r1, 2       ; r1 = n - 2
     call fib               ; r2 = fib(n-2)
     ld   r3, 0[sp]        ; r3 = fib(n-1)
     add  r2, r2, r3       ; r2 = fib(n-2) + fib(n-1)
-    add  sp, sp, #8       ; pop both slots
+    add  sp, sp, 8       ; pop both slots
     ret
