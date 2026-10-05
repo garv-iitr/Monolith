@@ -43,9 +43,9 @@ std::string Disassembler::disassemble(const std::vector<uint32_t>& words,
         uint32_t raw  = word & 0x3FFFFFF;
         int32_t  off  = static_cast<int32_t>(
             (raw & 0x2000000) ? (raw | 0xFC000000u) : raw);
-        uint32_t branchAddr = baseAddr + static_cast<uint32_t>(i) * 4;
-        int64_t  targetByte = static_cast<int64_t>(branchAddr) + static_cast<int64_t>(off) * 4;
-        uint32_t targetAddr = static_cast<uint32_t>(targetByte);
+        uint32_t thisAddress = baseAddr + static_cast<uint32_t>(i) * 4;
+        int64_t  target = static_cast<int64_t>(thisAddress) + 4 + static_cast<int64_t>(off) * 4;
+        uint32_t targetAddr = static_cast<uint32_t>(target);
 
         // Generate label name L_<8-digit-hex>
         std::string lbl = "L_" + hexAddr(targetAddr);
@@ -115,27 +115,36 @@ std::string Disassembler::disassemble(const std::vector<uint32_t>& words,
             uint32_t baseAddr_;
             size_t wordCount_;
             const std::map<uint32_t, std::string>& labels_;
+            bool plain_;
 
-            LocalResolver(uint32_t a, uint32_t b, size_t wc, const std::map<uint32_t, std::string>& l)
-                : addr_(a), baseAddr_(b), wordCount_(wc), labels_(l) {}
+            LocalResolver(uint32_t a, uint32_t b, size_t wc,
+                          const std::map<uint32_t, std::string>& l, bool plain)
+                : addr_(a), baseAddr_(b), wordCount_(wc), labels_(l), plain_(plain) {}
 
             std::string resolve(int32_t wordOffset) const override {
-                int64_t targetByte = static_cast<int64_t>(addr_)
-                                   + static_cast<int64_t>(wordOffset) * 4;
-                uint32_t targetAddr32 = static_cast<uint32_t>(targetByte);
+                int64_t target = static_cast<int64_t>(addr_) + 4
+                               + static_cast<int64_t>(wordOffset) * 4;
+                uint32_t targetAddr32 = static_cast<uint32_t>(target);
+                bool inImage = (targetAddr32 >= baseAddr_ &&
+                                targetAddr32 < baseAddr_ + static_cast<uint32_t>(wordCount_) * 4);
+                if (!inImage) {
+                    if (plain_) {
+                        return std::to_string(wordOffset);
+                    }
+                    auto it = labels_.find(targetAddr32);
+                    if (it != labels_.end())
+                        return it->second + " ; external target";
+                    return "L_" + hexAddr(targetAddr32) + " ; external target";
+                }
                 auto it = labels_.find(targetAddr32);
                 if (it != labels_.end()) {
-                    bool inImage = (targetAddr32 >= baseAddr_ &&
-                                    targetAddr32 < baseAddr_ + static_cast<uint32_t>(wordCount_) * 4);
-                    if (!inImage)
-                        return it->second + " ; external target";
                     return it->second;
                 }
                 return "L_" + hexAddr(targetAddr32);
             }
         };
 
-        LocalResolver labelResolver(addr, baseAddr, words.size(), labels);
+        LocalResolver labelResolver(addr, baseAddr, words.size(), labels, plain);
 
         std::string operands;
         try {
@@ -154,11 +163,13 @@ std::string Disassembler::disassemble(const std::vector<uint32_t>& words,
         }
     }
 
-    // Emit any labels that point past the end of the image
-    uint32_t endAddr = baseAddr + static_cast<uint32_t>(words.size()) * 4;
-    for (auto& [targetAddr, lbl] : labels) {
-        if (targetAddr < baseAddr || targetAddr >= endAddr) {
-            out << lbl << ": ; external target (outside image)\n";
+    // Emit any labels that point past the end of the image (omitted in plain mode for reassembly)
+    if (!plain) {
+        uint32_t endAddr = baseAddr + static_cast<uint32_t>(words.size()) * 4;
+        for (auto& [targetAddr, lbl] : labels) {
+            if (targetAddr < baseAddr || targetAddr >= endAddr) {
+                out << lbl << ": ; external target (outside image)\n";
+            }
         }
     }
 

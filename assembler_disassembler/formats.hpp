@@ -235,7 +235,7 @@ public:
 // Format5 — Branch / call (PC-relative, word offset)
 //   Instructions: B BEQ BNE BGT BLT CALL
 //   [31:26] opcode | [25:0] signed 26-bit word offset
-//   offset = (target_addr - branch_addr) / 4
+//   offset = (target_addr - (branch_addr + 4)) / 4
 //   The assembler pre-converts the label to a decimal offset
 //   string before calling parseOperands.
 // ============================================================
