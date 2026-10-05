@@ -19,7 +19,7 @@ class Cpu {
 
   explicit Cpu(std::size_t mem_words = 1024,
                risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE)
-      : dp_(mem_words), cu_(dp_, layout), alu_(std::make_unique<ReferenceAlu>()) {
+      : dp_(mem_words), cu_(dp_, layout), alu_(std::make_unique<HardwareAlu>()) {
     cu_.install(risc201::cu::assemble_horizontal(risc201::cu::build_program()));
   }
 
