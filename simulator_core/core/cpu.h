@@ -14,15 +14,53 @@
 
 namespace risc201 {
 
+// type eraser so the cpu can hold the horizontal or the vertical unit
+class CuUnit {
+ public:
+  virtual ~CuUnit() = default;
+  virtual bool step() = 0;
+  virtual void reset() = 0;
+  virtual std::uint16_t micro_pc() const = 0;
+  virtual const char* stage() const = 0;
+  virtual const risc201::cu::ControlSignals& signals() const = 0;
+};
+
+template <typename CU, typename Rom>
+class CuHolder : public CuUnit {
+ public:
+  CuHolder(risc201::cu::Datapath& dp, risc201::cu::StageLayout layout, Rom rom)
+      : cu_(dp, layout) {
+    cu_.install(std::move(rom));
+  }
+  bool step() override { return cu_.step(); }
+  void reset() override { cu_.reset(); }
+  std::uint16_t micro_pc() const override { return cu_.micro_pc(); }
+  const char* stage() const override { return cu_.stage(); }
+  const risc201::cu::ControlSignals& signals() const override { return cu_.signals(); }
+
+ private:
+  CU cu_;
+};
+
 class Cpu {
  public:
-  using ControlUnit = risc201::cu::HorizontalControlUnit;
-
   explicit Cpu(std::size_t mem_words = 1024,
-               risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE)
-      : dp_(mem_words), cu_(dp_, layout), alu_(std::make_unique<HardwareAlu>()) {
-    cu_.install(risc201::cu::assemble_horizontal(risc201::cu::build_program()));
-    micro_layout_ = risc201::cu::layout_program(risc201::cu::build_program());
+               risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE,
+               bool vertical = false)
+      : dp_(mem_words), alu_(std::make_unique<HardwareAlu>()), vertical_(vertical) {
+    const risc201::cu::Program program = risc201::cu::build_program(layout);
+    if (vertical) {
+      cu_ = std::make_unique<
+          CuHolder<risc201::cu::VerticalControlUnit,
+                   risc201::cu::ControlMemory<risc201::cu::VerticalMicroWord>>>(
+          dp_, layout, risc201::cu::assemble_vertical(program));
+    } else {
+      cu_ = std::make_unique<
+          CuHolder<risc201::cu::HorizontalControlUnit,
+                   risc201::cu::ControlMemory<risc201::cu::HorizontalMicroWord>>>(
+          dp_, layout, risc201::cu::assemble_horizontal(program));
+    }
+    micro_layout_ = risc201::cu::layout_program(program);
   }
 
   void load(const std::vector<Word>& code) { dp_.mem.load_words(0, code); }
@@ -31,8 +69,8 @@ class Cpu {
   bool step() {
     if (dp_.halted) return false;
     try {
-      const bool alive = cu_.step();
-      if (alive) alu_->tick(dp_.regs, cu_.signals(), dp_.regs);
+      const bool alive = cu_->step();
+      if (alive) alu_->tick(dp_.regs, cu_->signals(), dp_.regs);
       return alive;
     } catch (const RuntimeException& e) {
       fault_code_ = e.code;
@@ -51,7 +89,7 @@ class Cpu {
 
   void reset() {
     dp_.reset();
-    cu_.reset();
+    cu_->reset();
     fault_code_ = ExceptionCode::NONE;
     fault_address_ = 0;
   }
@@ -61,9 +99,10 @@ class Cpu {
   bool faulted() const { return fault_code_ != ExceptionCode::NONE; }
   ExceptionCode fault_code() const { return fault_code_; }
   std::uint64_t fault_address() const { return fault_address_; }
-  std::uint16_t micro_pc() const { return cu_.micro_pc(); }
-  const char* stage() const { return cu_.stage(); }
-  const risc201::cu::ControlSignals& signals() const { return cu_.signals(); }
+  std::uint16_t micro_pc() const { return cu_->micro_pc(); }
+  const char* stage() const { return cu_->stage(); }
+  const risc201::cu::ControlSignals& signals() const { return cu_->signals(); }
+  bool vertical() const { return vertical_; }
 
   Word read_reg(std::uint8_t i) const { return dp_.rf.read(i); }
   void write_reg(std::uint8_t i, Word value) { dp_.rf.write(i, value); }
@@ -99,8 +138,8 @@ class Cpu {
     v.ir = dp_.regs.ir;
     for (std::uint8_t i = 0; i < NUM_REGISTERS; ++i) v.gprs[i] = dp_.rf.read(i);
     v.flags = dp_.regs.flags;
-    v.micro_pc = cu_.micro_pc();
-    v.stage = cu_.stage();
+    v.micro_pc = cu_->micro_pc();
+    v.stage = cu_->stage();
     v.halted = dp_.halted;
     v.halt_reason = dp_.halt_reason;
     v.fault_code = fault_code_;
@@ -111,9 +150,10 @@ class Cpu {
 
  private:
   risc201::cu::Datapath dp_;
-  ControlUnit cu_;
+  std::unique_ptr<CuUnit> cu_;
   std::unique_ptr<AluUnit> alu_;
   risc201::cu::MicroProgramLayout micro_layout_;
+  bool vertical_ = false;
   ExceptionCode fault_code_ = ExceptionCode::NONE;
   std::uint64_t fault_address_ = 0;
 };
