@@ -1,22 +1,6 @@
 #ifndef RISC201_CU_MICRO_SEQUENCER_H
 #define RISC201_CU_MICRO_SEQUENCER_H
 
-// ============================================================================
-// Micro-sequencer (Sarangi, sec. 9.8).
-//
-// Holds the microPC and the micro-fetch multiplexer.  Each cycle the next
-// microPC is one of:
-//   * microPC + 1              (mloadIR, mdecode, mmov, mmovi, madd)
-//   * the microcode entry point of the current opcode (mswitch)
-//   * the micro-branch target  (mb)
-//   * microPC + 1 or the target, selected by isMBranch (mbeq)
-//   * the preamble address     (end of instruction -> next fetch)
-//
-// The multiplexer tree is exactly the one drawn in figs. 9.25 / 9.27: a 2:1
-// M1 picks between "next" and "target" using isMBranch, and the 4:1 micro-fetch
-// multiplexer chooses the final value.
-// ============================================================================
-
 #include <cstdint>
 
 #include "common/control_signals.h"
@@ -28,9 +12,9 @@ struct MicroSequencer {
   std::uint16_t micro_pc = 0;
   std::uint16_t fetch_addr = 0;
 
-  // Combinational hardware of the micro-fetch path.
-  Mux2<std::uint16_t> m1;          // { next, branch_target }      sel = isMBranch
-  Mux4<std::uint16_t> ufetch_mux;  // { next, target, switch, m1 }
+  // m1 sel: 0 = next, 1 = branch target
+  Mux2<std::uint16_t> m1;
+  Mux4<std::uint16_t> ufetch_mux;
 
   const char* last_source = "next";
 
@@ -40,8 +24,6 @@ struct MicroSequencer {
     last_source = "reset";
   }
 
-  // Compute the next microPC.  `switch_target` is entry_point(opcode), only
-  // meaningful when sig.next_addr == MSWITCH.
   void advance(const ControlSignals& sig, bool is_m_branch, std::uint16_t switch_target) {
     const std::uint16_t next = static_cast<std::uint16_t>(micro_pc + 1);
 
@@ -75,15 +57,6 @@ struct MicroSequencer {
   }
 };
 
-// The "switch" unit: maps an opcode to the microcode entry point.
-struct SwitchUnit {
-  std::uint16_t operator()(std::uint8_t opcode, const std::uint16_t* entry_table,
-                           std::size_t entries) const {
-    if (opcode >= entries) return 0;
-    return entry_table[opcode];
-  }
-};
+}
 
-}  // namespace risc201::cu
-
-#endif  // RISC201_CU_MICRO_SEQUENCER_H
+#endif

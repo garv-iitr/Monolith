@@ -1,10 +1,3 @@
-// ============================================================
-// main_dis.cpp — RISC201 disassembler CLI
-//
-// Usage:
-//   risc201dis <input> [--format hex|bin|raw] [--base <addr>]
-//              [--plain] [--raw-regs] [-o <file>]
-// ============================================================
 #include "disassembler.hpp"
 #include <cstdlib>
 #include <fstream>
@@ -61,7 +54,6 @@ int main(int argc, char* argv[]) {
         std::cerr << "No input file specified.\n"; return 1;
     }
 
-    // Determine format
     DisasmFmt fmt;
     try {
         if (fmtStr.empty()) {
@@ -74,7 +66,6 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error detecting format: " << e.what() << "\n"; return 1;
     }
 
-    // Load words
     std::vector<uint32_t> words;
     try {
         words = loadWords(inputFile, fmt);
@@ -82,7 +73,6 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error loading input: " << e.what() << "\n"; return 1;
     }
 
-    // Disassemble
     Disassembler dis;
     std::string output;
     try {
@@ -91,7 +81,6 @@ int main(int argc, char* argv[]) {
         std::cerr << "Disassembly error: " << e.what() << "\n"; return 1;
     }
 
-    // Write output
     if (outputFile.empty()) {
         std::cout << output;
     } else {

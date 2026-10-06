@@ -91,6 +91,34 @@ void print_registers(const risc201::Debugger& dbg) {
     std::printf("  halted: %s\n", (v.halt_reason[0] != '\0') ? v.halt_reason : "halt");
 }
 
+void print_micro_state(const risc201::Debugger& dbg) {
+  const risc201::StateView& v = dbg.view();
+  const risc201::cu::InternalRegisters& m = v.micro;
+  std::printf("  [micro] A=0x%X B=0x%X alu=0x%X  mar=0x%X mdr=0x%X lmd=0x%X\n",
+              static_cast<unsigned>(m.A), static_cast<unsigned>(m.B),
+              static_cast<unsigned>(m.alu_result), static_cast<unsigned>(m.mar),
+              static_cast<unsigned>(m.mdr), static_cast<unsigned>(m.ld_result));
+  std::printf("          regsrc=0x%X regval=0x%X regdata=0x%X  btgt=0x%X immx=0x%X\n",
+              static_cast<unsigned>(m.reg_src), static_cast<unsigned>(m.reg_val),
+              static_cast<unsigned>(m.reg_data),
+              static_cast<unsigned>(m.branch_target), static_cast<unsigned>(m.immx));
+  std::printf("          I=%d rd=%u rs1=%u rs2=%u  E=%d GT=%d\n", m.I ? 1 : 0,
+              static_cast<unsigned>(m.rd), static_cast<unsigned>(m.rs1),
+              static_cast<unsigned>(m.rs2), m.flags_E ? 1 : 0, m.flags_GT ? 1 : 0);
+
+  const std::uint8_t op = static_cast<std::uint8_t>(get_opcode(v.ir));
+  const std::uint16_t start = dbg.cpu().micro_routine_start(op);
+  const std::uint16_t end = dbg.cpu().micro_routine_end(op);
+  std::printf("  routine [%u..%u) = %u micro-ops",
+              static_cast<unsigned>(start), static_cast<unsigned>(end),
+              static_cast<unsigned>(end - start));
+  if (dbg.at_instruction_boundary())
+    std::printf("  -- end of instruction (%zu micro-ops)\n",
+                dbg.micro_ops_last_instruction());
+  else
+    std::printf("  (at micro-op %zu)\n", dbg.micro_steps());
+}
+
 void print_watch_changes(risc201::Debugger& dbg) {
   for (std::uint8_t r : dbg.changed_registers()) {
     std::printf("  watch: r%u = 0x%X\n", static_cast<unsigned>(r),
@@ -101,7 +129,7 @@ void print_watch_changes(risc201::Debugger& dbg) {
 void print_help() {
   std::printf(
       "  step | s              step one instruction\n"
-      "  micro | mi            step one micro-cycle\n"
+      "  micro | mi            step one micro-cycle (shows micro-registers)\n"
       "  run | r               run to completion\n"
       "  continue | c          run to next breakpoint or completion\n"
       "  break <addr> | b      set breakpoint\n"
@@ -144,6 +172,7 @@ int main() {
     } else if (cmd == "micro" || cmd == "mi") {
       dbg.step_micro();
       print_registers(dbg);
+      print_micro_state(dbg);
       print_watch_changes(dbg);
     } else if (cmd == "run" || cmd == "r") {
       dbg.run();

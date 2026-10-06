@@ -1,15 +1,6 @@
 #ifndef RISC201_CU_REGISTER_FILE_UNIT_H
 #define RISC201_CU_REGISTER_FILE_UNIT_H
 
-// ============================================================================
-// Register file unit (Sarangi, sec. 9.5.3).
-//
-// 16 GPRs plus the three interface registers regSrc / regData / regVal that
-// live in the shared internal-register bank.  A read cycle places regs[regSrc]
-// into regVal; a write cycle stores regData into regs[regSrc].  Both take one
-// cycle, so the microcode sequences regSrc/regData and then issues the op.
-// ============================================================================
-
 #include <array>
 #include <cstdint>
 
@@ -24,6 +15,7 @@ struct RegisterFileUnit {
 
   void reset() { regs.fill(Word{0}); }
 
+  // reg_src is a 4-bit field, the % is just a safety mask
   void tick(const InternalRegisters& cur, const ControlSignals& sig, InternalRegisters& next) {
     if (sig.reg_op == RegOp::READ) {
       next.reg_val = regs[cur.reg_src % NUM_REGISTERS];
@@ -37,6 +29,6 @@ struct RegisterFileUnit {
   void write(std::uint8_t index, Word value) { regs[index % NUM_REGISTERS] = value; }
 };
 
-}  // namespace risc201::cu
+}
 
-#endif  // RISC201_CU_REGISTER_FILE_UNIT_H
+#endif

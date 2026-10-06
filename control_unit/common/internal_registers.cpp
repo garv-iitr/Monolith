@@ -94,9 +94,9 @@ void InternalRegisters::set(InternalReg reg, Word value) {
     case InternalReg::MEMCHK_ADDR:   memchk_addr = value; break;
     case InternalReg::FLAGS_N:       flags.N = (value != 0); break;
   }
-  // Keep the 1-bit flag mirrors coherent with the architectural flags.
+  // these two are just mirrors of the real flags, keep em synced
   flags_E = flags.Z;
   flags_GT = !flags.N && !flags.Z;
 }
 
-}  // namespace risc201::cu
+}

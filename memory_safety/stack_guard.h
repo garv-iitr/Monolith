@@ -8,21 +8,13 @@
 namespace risc201 {
 namespace safety {
 
-// Stack grows DOWN from STACK_BASE toward STACK_LIMIT.
-// SP (R14) points at the top-most valid pushed word.
-//
-//   valid SP range : [STACK_LIMIT, STACK_BASE]
-//   push OK        : sp > STACK_LIMIT
-//   pop  OK        : sp < STACK_BASE
-//
-// Uses ::ExceptionCode from simulator_core/core/exception.h.
-// Does NOT define its own error codes.
+// stack grows down, sp points at the top word
 
 class StackGuard {
  public:
-  static constexpr Word kMemSize    = 64 * 1024;         // 64 KB
-  static constexpr Word kStackBase  = kMemSize;          // top of memory
-  static constexpr Word kStackLimit = kMemSize - 4096;   // 4 KB max stack
+  static constexpr Word kMemSize    = 64 * 1024;
+  static constexpr Word kStackBase  = kMemSize;
+  static constexpr Word kStackLimit = kMemSize - 4096;
 
   StackGuard() = default;
   StackGuard(Word base, Word limit) : base_(base), limit_(limit) {}
@@ -44,5 +36,5 @@ class StackGuard {
   Word limit_ = kStackLimit;
 };
 
-}  // namespace safety
-}  // namespace risc201
+}
+}

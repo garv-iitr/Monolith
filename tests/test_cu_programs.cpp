@@ -1,17 +1,3 @@
-// ============================================================================
-// Control-unit program tests.
-//
-// Runs the three presentation programs (recursive Fibonacci, matrix multiply
-// + FPU, bubble sort + checksum) through all four configurations
-//   {4-stage, 6-stage} x {horizontal, vertical}
-// and checks that each configuration halts without faulting and produces the
-// exact expected memory / register state.  Also verifies that the suite
-// exercises every one of the 34 ISA opcodes.
-//
-// The ALU / FPU / memory-check units belong to Atharva and Paraas; until their
-// modules land, the harness drives the control unit with the reference models
-// in tests/test_reference_units.h (the same args contract).
-// ============================================================================
 
 #include <array>
 #include <cstdint>
@@ -44,14 +30,10 @@ struct Outcome {
   bool faulted = false;
   std::string reason;
   int cycles = 0;
-  std::vector<std::pair<Word, Word>> mem;                 // probed memory state
-  std::array<Word, NUM_REGISTERS> regs{};                 // final GPRs
+  std::vector<std::pair<Word, Word>> mem;
+  std::array<Word, NUM_REGISTERS> regs{};
 };
 
-// Execute one program on one configuration, driving the reference units after
-// every micro-cycle (same order as the datapath used to: rf, mem, alu, fpu,
-// memchk -- rf and mem live inside Datapath::execute, the rest are applied
-// here).
 template <typename CU>
 Outcome run_one(const TestProgram& tp, StageLayout layout) {
   Datapath dp(4096);
@@ -71,6 +53,7 @@ Outcome run_one(const TestProgram& tp, StageLayout layout) {
     try {
       if (!cu.step()) break;
       if (!dp.halted) {
+        // tick order has to match the datapath or the states drift
         const ControlSignals& sig = cu.signals();
         alu.tick(dp.regs, sig, dp.regs);
         fpu.tick(dp.regs, sig, dp.regs);
@@ -124,7 +107,6 @@ void check_outcome(const TestProgram& tp, const Outcome& o, const char* config) 
   }
 }
 
-// Run one program across all four configurations and verify identical results.
 void check_program(const TestProgram& tp) {
   std::printf("\n--- %s ---\n", tp.name.c_str());
   const Outcome hs6 = run_one<HorizontalControlUnit>(tp, StageLayout::SIX_STAGE);
@@ -154,7 +136,7 @@ const std::vector<TestProgram>& suite() {
   return s;
 }
 
-}  // namespace
+}
 
 RISC201_TEST(cu_program_recursive_fibonacci) { check_program(suite()[0]); }
 

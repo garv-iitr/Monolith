@@ -1,20 +1,6 @@
 #ifndef RISC201_CU_MICRO_ASM_H
 #define RISC201_CU_MICRO_ASM_H
 
-// ============================================================================
-// A tiny symbolic micro-assembly language.
-//
-// Microcode is authored once, in terms of the eight microinstructions, and is
-// then translated into either a horizontal or a vertical control memory.  This
-// keeps the two control units in lock-step: they store the same program two
-// different ways and are decoded by two different (but equivalent) datapaths.
-//
-// The routine-local label convention:
-//   * MicroStmt.label  : this statement defines label id (>= 0), or kNoLabel.
-//   * MicroStmt.target : branch target -- kNoLabel (no branch), kPreamble
-//                        (return to address 0) or a local label id.
-// ============================================================================
-
 #include <cstdint>
 #include <vector>
 
@@ -39,7 +25,6 @@ struct MicroStmt {
 
 using Routine = std::vector<MicroStmt>;
 
-// Argument helpers ------------------------------------------------------------
 inline std::uint16_t a_reg(RegOp op)     { return encode_args(UnitId::REGFILE, static_cast<std::uint8_t>(op)); }
 inline std::uint16_t a_alu(AluOp op)     { return encode_args(UnitId::ALU, static_cast<std::uint8_t>(op)); }
 inline std::uint16_t a_mem(MemOp op)     { return encode_args(UnitId::MEMORY, static_cast<std::uint8_t>(op)); }
@@ -47,7 +32,6 @@ inline std::uint16_t a_fpu(FpuOp op)     { return encode_args(UnitId::FPU, stati
 inline std::uint16_t a_chk(MemChkOp op)  { return encode_args(UnitId::MEMCHK, static_cast<std::uint8_t>(op)); }
 inline std::uint16_t a_ctrl(ControlOp op) { return encode_args(UnitId::CONTROL, static_cast<std::uint8_t>(op)); }
 
-// Statement builders ----------------------------------------------------------
 inline MicroStmt mloadIR(StageClass stage = StageClass::FETCH) {
   MicroStmt s; s.op = MicroOp::MLOADIR; s.stage = stage; return s;
 }
@@ -82,7 +66,7 @@ inline MicroStmt mhalt(StageClass stage = StageClass::WRITEBACK) {
 }
 inline MicroStmt mlabel(int label, MicroStmt s) { s.label = label; return s; }
 
-// The microcode preamble shared by every instruction (Sarangi, Definition 64).
+// every instruction starts with this preamble
 inline Routine preamble() {
   return {
       mloadIR(StageClass::FETCH),
@@ -92,16 +76,8 @@ inline Routine preamble() {
   };
 }
 
-// Translate the `args` field (unit id + opcode) into the individual unit
-// operation signals.  This is the hardware the vertical decoder needs and the
-// horizontal word already embeds.
 inline void apply_unit_args(ControlSignals& sig, std::uint16_t args);
 
-// ----------------------------------------------------------------------------
-// The single source of truth for what a microinstruction means.  Both the
-// horizontal assembler and the vertical micro-decoder funnel through this
-// function, so the two control units cannot drift apart semantically.
-// ----------------------------------------------------------------------------
 inline void micro_semantics(MicroOp op, InternalReg src, InternalReg dest, std::int32_t imm,
                             std::uint16_t target, std::uint16_t args, StageClass stage,
                             ControlSignals& sig, Word& muimm) {
@@ -112,13 +88,12 @@ inline void micro_semantics(MicroOp op, InternalReg src, InternalReg dest, std::
 
   switch (op) {
     case MicroOp::MLOADIR:
-      // ir <- instruction memory[pc]; the fetch unit drives ir directly, so
-      // the read bus / write bus are not involved (Sarangi, fig. 9.17).
+      // fetch unit drives ir straight in, no bus involved
       sig.fetch_ir = true;
       break;
 
     case MicroOp::MDECODE:
-      break;  // pure wait cycle; the decode unit is combinational
+      break;
 
     case MicroOp::MSWITCH:
       sig.next_addr = NextAddr::MSWITCH;
@@ -156,9 +131,6 @@ inline void micro_semantics(MicroOp op, InternalReg src, InternalReg dest, std::
   apply_unit_args(sig, args);
 }
 
-// Translate the `args` field (unit id + opcode) into the individual unit
-// operation signals.  This is the hardware the vertical decoder needs and the
-// horizontal word already embeds.
 inline void apply_unit_args(ControlSignals& sig, std::uint16_t args) {
   const UnitId unit = args_unit(args);
   const std::uint8_t opcode = args_op(args);
@@ -190,6 +162,6 @@ inline void apply_unit_args(ControlSignals& sig, std::uint16_t args) {
   }
 }
 
-}  // namespace risc201::cu::micro
+}
 
-#endif  // RISC201_CU_MICRO_ASM_H
+#endif

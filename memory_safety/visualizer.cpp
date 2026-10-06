@@ -66,5 +66,5 @@ std::string StackVisualizer::render_diff(const std::vector<Word>& before,
   return os.str();
 }
 
-}  // namespace safety
-}  // namespace risc201
+}
+}

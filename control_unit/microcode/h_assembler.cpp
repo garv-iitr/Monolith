@@ -22,4 +22,4 @@ ControlMemory<HorizontalMicroWord> assemble_horizontal(const Program& program) {
   return cm;
 }
 
-}  // namespace risc201::cu
+}
