@@ -1,24 +1,6 @@
 #ifndef RISC201_CU_CONTROL_SIGNALS_H
 #define RISC201_CU_CONTROL_SIGNALS_H
 
-// ============================================================================
-// Control signals of the microprogrammed control unit.
-//
-// A control word is a bundle of signal lines that, for one micro-cycle,
-//   * selects the single register that drives the write bus,
-//   * selects which registers latch the read bus,
-//   * selects the transfer multiplexer input,
-//   * issues the functional-unit arguments (ALU / register file / memory /
-//     FPU / memory-check),
-//   * and steers the micro-sequencer.
-//
-// The horizontal encoding embeds these fields literally in the control memory
-// word (Sarangi sec. 9.8.2).  The vertical encoding stores a compact encoded
-// microinstruction and reconstructs this bundle in the micro-decoder
-// (Sarangi sec. 9.8.1).  Both paths converge on this struct, so the datapath
-// and the execute unit are shared between the two control units.
-// ============================================================================
-
 #include <cstdint>
 #include <initializer_list>
 #include <string>
@@ -27,9 +9,6 @@
 
 namespace risc201::cu {
 
-// ----------------------------------------------------------------------------
-// Functional units addressed through the `args` field on the bus.
-// ----------------------------------------------------------------------------
 enum class UnitId : std::uint8_t {
   NONE     = 0,
   ALU      = 1,
@@ -63,9 +42,6 @@ inline const char* unit_name(UnitId u) {
   return "??";
 }
 
-// ----------------------------------------------------------------------------
-// Per-unit operation codes (the low 7 bits of `args`).
-// ----------------------------------------------------------------------------
 enum class AluOp : std::uint8_t {
   NOP = 0, ADD, SUB, MUL, DIV, MOD, AND, OR, NOT, XOR,
   LSL, LSR, ASR, CMP, PASS_A, PASS_B
@@ -81,7 +57,6 @@ enum class FpuOp : std::uint8_t {
 
 enum class MemChkOp : std::uint8_t { NOP = 0, CHECK };
 
-// Control-unit level operations carried through the same args field.
 enum class ControlOp : std::uint8_t { NOP = 0, HALT };
 
 inline const char* alu_op_name(AluOp op) {
@@ -139,31 +114,20 @@ inline const char* fpu_op_name(FpuOp op) {
   return "??";
 }
 
-// ----------------------------------------------------------------------------
-// Multiplexer / sequencer selects
-// ----------------------------------------------------------------------------
 enum class TransferSel : std::uint8_t {
-  WRITE_BUS = 0,  // read bus <- write bus
-  MU_IMM    = 1,  // read bus <- sign-extended micro-immediate (muimm)
-  MU_ADDER  = 2   // read bus <- micro-adder output (write bus + muimm)
+  WRITE_BUS = 0,
+  MU_IMM    = 1,
+  MU_ADDER  = 2
 };
 
 enum class NextAddr : std::uint8_t {
-  INCREMENT   = 0,  // upc <- upc + 1
-  MSWITCH     = 1,  // upc <- entry_point(opcode)
-  JUMP        = 2,  // upc <- jump_target
-  BRANCH_COND = 3,  // upc <- isMBranch ? jump_target : upc + 1
-  FETCH       = 4   // upc <- fetch address (preamble)
+  INCREMENT   = 0,
+  MSWITCH     = 1,
+  JUMP        = 2,
+  BRANCH_COND = 3,
+  FETCH       = 4
 };
 
-// ----------------------------------------------------------------------------
-// Stage classification.  A micro-step is tagged with a *class*; the concrete
-// stage name is derived from the selected pipeline layout.  This is what makes
-// the 4-stage and 6-stage variants the same microcode viewed two ways.
-//
-//   4-stage: (IF+OF) -> EX -> MA -> RW
-//   6-stage:  IF -> OF -> EX -> MEMCHK -> MA -> RW
-// ----------------------------------------------------------------------------
 enum class StageClass : std::uint8_t {
   FETCH = 0, DECODE, EXECUTE, CHECK, MEMORY, WRITEBACK, SEQUENCE
 };
@@ -194,39 +158,31 @@ inline const char* stage_name(StageLayout layout, StageClass sc) {
   return "??";
 }
 
-// ----------------------------------------------------------------------------
-// The control word
-// ----------------------------------------------------------------------------
 inline std::uint32_t reg_bit(InternalReg r) {
   return std::uint32_t{1} << static_cast<std::uint8_t>(r);
 }
 
 struct ControlSignals {
-  // Write bus: exactly one source drives it (or NONE in an muimm-only cycle).
   InternalReg write_src = InternalReg::NONE;
 
-  // Read bus: every bit set here latches the value on the read bus this cycle.
+  // one bit per internal reg, bits line up with the InternalReg values
   std::uint32_t read_mask = 0;
 
-  // Transfer multiplexer.
   TransferSel transfer_sel = TransferSel::WRITE_BUS;
 
-  // Functional-unit arguments.
   AluOp      alu_op    = AluOp::NOP;
   RegOp      reg_op    = RegOp::NOP;
   MemOp      mem_op    = MemOp::NOP;
   FpuOp      fpu_op    = FpuOp::NOP;
   MemChkOp   memchk_op = MemChkOp::NOP;
-  bool       set_flags = false;   // ALU CMP/arithmetic commits Z/N/C/V
-  bool       fpu_set_fcc = false; // FPU FCMP commits the float condition code
-  bool       fetch_ir = false;    // mloadIR: ir <- instruction memory[pc]
+  bool       set_flags = false;
+  bool       fpu_set_fcc = false;
+  bool       fetch_ir = false;
 
-  // Micro-sequencer.
   NextAddr next_addr   = NextAddr::INCREMENT;
   std::uint16_t jump_target = 0;
   bool     halt        = false;
 
-  // Tagging.
   StageClass stage = StageClass::EXECUTE;
   std::uint16_t args = 0;
 
@@ -240,6 +196,6 @@ inline void read_all(ControlSignals& s, std::initializer_list<InternalReg> regs)
   for (InternalReg r : regs) s.read(r);
 }
 
-}  // namespace risc201::cu
+}
 
-#endif  // RISC201_CU_CONTROL_SIGNALS_H
+#endif

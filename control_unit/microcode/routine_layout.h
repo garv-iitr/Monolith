@@ -1,17 +1,6 @@
 #ifndef RISC201_CU_ROUTINE_LAYOUT_H
 #define RISC201_CU_ROUTINE_LAYOUT_H
 
-// ============================================================================
-// Microprogram placement.
-//
-// Resolves the symbolic program into absolute control-memory addresses:
-//   address 0..3 : the shared preamble
-//   address 4..  : the per-opcode routines, laid back to back
-//
-// Routine-local labels are resolved to absolute addresses here, so both the
-// horizontal and vertical assemblers can consume a single resolved listing.
-// ============================================================================
-
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -24,13 +13,13 @@ namespace risc201::cu {
 struct PlacedMicroStmt {
   micro::MicroStmt stmt;
   std::uint16_t addr = 0;
-  std::uint16_t target = 0;  // resolved branch target
+  std::uint16_t target = 0;
 };
 
 struct MicroProgramLayout {
   std::uint16_t preamble_addr = 0;
   std::vector<PlacedMicroStmt> stmts;
-  std::vector<std::pair<std::uint8_t, std::uint16_t>> entries;  // opcode -> start
+  std::vector<std::pair<std::uint8_t, std::uint16_t>> entries;
 
   std::uint16_t entry_of(Opcode op) const {
     for (const auto& e : entries) {
@@ -43,7 +32,6 @@ struct MicroProgramLayout {
 inline MicroProgramLayout layout_program(const Program& program) {
   MicroProgramLayout out;
 
-  // Resolve one routine at a given start address.
   auto place = [&out](const micro::Routine& routine, std::uint16_t start) {
     std::uint16_t addr = start;
     std::vector<std::uint16_t> label_addr(64, 0);
@@ -54,7 +42,6 @@ inline MicroProgramLayout layout_program(const Program& program) {
       out.stmts.push_back(PlacedMicroStmt{s, addr, 0});
       ++addr;
     }
-    // Second pass: resolve targets now that all labels are known.
     for (std::size_t i = first; i < out.stmts.size(); ++i) {
       const micro::MicroStmt& s = out.stmts[i].stmt;
       std::uint16_t t = 0;
@@ -66,6 +53,7 @@ inline MicroProgramLayout layout_program(const Program& program) {
   };
 
   out.preamble_addr = 0;
+  // preamble sits at 0, the opcode routines follow right after it
   std::uint16_t next = place(micro::preamble(), 0);
 
   for (const ProgramEntry& e : program) {
@@ -75,6 +63,6 @@ inline MicroProgramLayout layout_program(const Program& program) {
   return out;
 }
 
-}  // namespace risc201::cu
+}
 
-#endif  // RISC201_CU_ROUTINE_LAYOUT_H
+#endif

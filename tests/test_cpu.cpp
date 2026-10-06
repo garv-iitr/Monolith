@@ -25,7 +25,7 @@ Word enc_branch(Opcode op, int word_offset) {
 Word enc_zero(Opcode op) { return static_cast<Word>(op) << 26; }
 Word enc_halt() { return static_cast<Word>(Opcode::HALT) << 26; }
 
-}  // namespace
+}
 
 RISC201_TEST(cpu_runs_transfer_program) {
   risc201::Cpu cpu;
@@ -59,14 +59,14 @@ RISC201_TEST(cpu_executes_alu_ops) {
   cpu.run();
 
   CHECK(!cpu.faulted());
-  CHECK(cpu.read_reg(3) == 42u);  // 6 * 7
-  CHECK(cpu.read_reg(4) == 13u);  // 6 + 7
-  CHECK(cpu.read_reg(5) == 1u);   // 7 - 6
-  CHECK(cpu.read_reg(6) == 1u);   // 7 / 6
-  CHECK(cpu.read_reg(7) == 1u);   // 7 % 6
-  CHECK(cpu.read_reg(8) == 6u);   // 6 & 7
-  CHECK(cpu.read_reg(9) == 7u);   // 6 | 7
-  CHECK(cpu.read_reg(10) == 1u);  // 6 ^ 7
+  CHECK(cpu.read_reg(3) == 42u);
+  CHECK(cpu.read_reg(4) == 13u);
+  CHECK(cpu.read_reg(5) == 1u);
+  CHECK(cpu.read_reg(6) == 1u);
+  CHECK(cpu.read_reg(7) == 1u);
+  CHECK(cpu.read_reg(8) == 6u);
+  CHECK(cpu.read_reg(9) == 7u);
+  CHECK(cpu.read_reg(10) == 1u);
 }
 
 RISC201_TEST(cpu_cmp_sets_flags) {
@@ -83,6 +83,7 @@ RISC201_TEST(cpu_cmp_sets_flags) {
 
 RISC201_TEST(cpu_bad_memory_access_faults) {
   risc201::Cpu cpu;
+  // call needs somewhere to stash the return addr, theres no stack here
   cpu.load({enc_branch(Opcode::CALL, 0)});
   cpu.run();
 

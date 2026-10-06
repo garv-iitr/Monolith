@@ -1,26 +1,8 @@
 #ifndef RISC201_ISA_H
 #define RISC201_ISA_H
 
-// ============================================================================
-// RISC201 ISA -- single source of truth for the whole project.
-//
-// 32-bit fixed-width instructions, 6-bit opcode in bits [31:26].
-// 16 general-purpose registers (R0-R15) and 16 floating-point registers
-// (F0-F15), all 4-bit identifiers.  R14 = SP, R15 = RA.
-//
-// Two-bit `mode` field in bits [25:24] selects the operand form:
-//   00 = register, 01 = signed immediate, 10 = unsigned immediate,
-//   11 = high immediate (imm16 << 16).
-//
-// The micro-level contract (MicroOp / InternalReg) lives here as well because
-// both the horizontal and the vertical control unit are built against it.
-// ============================================================================
-
 #include <cstdint>
 
-// ----------------------------------------------------------------------------
-// Word width (parameterized at configure time, 32 by default)
-// ----------------------------------------------------------------------------
 #ifndef RISC201_WORD_BITS
 #define RISC201_WORD_BITS 32
 #endif
@@ -36,8 +18,8 @@ using Word  = std::uint32_t;
 using Sword = std::int32_t;
 #endif
 
-constexpr int NUM_REGISTERS        = 16;  // GPRs R0-R15
-constexpr int NUM_FLOAT_REGISTERS  = 16;  // FPRs F0-F15
+constexpr int NUM_REGISTERS        = 16;
+constexpr int NUM_FLOAT_REGISTERS  = 16;
 constexpr int NUM_INT_REGISTERS    = NUM_REGISTERS;
 constexpr int REG_WIDTH_BITS       = kWordBits;
 
@@ -45,37 +27,29 @@ constexpr std::uint8_t REG_SWAP = 13;
 constexpr std::uint8_t REG_SP   = 14;
 constexpr std::uint8_t REG_RA   = 15;
 
-// ============================================================================
-// Architectural opcodes (RISC201)
-// ============================================================================
 enum class Opcode : std::uint8_t {
-  // 0x0_ Arithmetic & Logic Unit operations
   NOP = 0x00, ADD = 0x01, SUB = 0x02, MUL = 0x03, DIV = 0x04, MOD = 0x05,
   AND = 0x06, OR  = 0x07, NOT = 0x08, XOR = 0x09, LSL = 0x0A, LSR = 0x0B,
   ASR = 0x0C, CMP = 0x0D,
 
-  // 0x1_ Data movement
   MOV = 0x10, LD = 0x11, ST = 0x12,
 
-  // 0x2_ Control flow & system
   B = 0x20, BEQ = 0x21, BNE = 0x22, BGT = 0x23, BLT = 0x24,
   CALL = 0x25, RET = 0x26, BNDCHK = 0x27, HALT = 0x28,
 
-  // 0x3_ Floating-point unit
   FADD = 0x30, FSUB = 0x31, FMUL = 0x32, FDIV = 0x33, FCMP = 0x34,
   FLD  = 0x35, FST  = 0x36, FMOV = 0x37
 };
 
-// Instruction family -- drives field extraction / encode-decode.
 enum class Format : std::uint8_t {
-  ALU3,       // Format 1: ALU three-operand (reg or imm)
-  ALU2,       // Format 2: ALU two-operand, no rs1 (NOT, MOV)
-  COMPARE,    // Format 3: CMP, no rd
-  MEMORY,     // Format 4: base + signed offset (LD/ST/FLD/FST/BNDCHK)
-  BRANCH,     // Format 5: 26-bit PC-relative word offset
-  NO_OPERAND, // Format 6: NOP / RET / HALT / BNDCHK-less
-  FPU3,       // Format 7: floating-point three-register
-  FPU2        // Format 8: floating-point compare / move
+  ALU3,
+  ALU2,
+  COMPARE,
+  MEMORY,
+  BRANCH,
+  NO_OPERAND,
+  FPU3,
+  FPU2
 };
 
 inline const char* opcode_name(Opcode op) {
@@ -132,7 +106,7 @@ inline Format format_of(Opcode op) {
       return Format::COMPARE;
 
     case Opcode::LD: case Opcode::ST: case Opcode::BNDCHK:
-    case Opcode::FLD: case Opcode::FST:  // base GPR + signed offset, FPR in rd
+    case Opcode::FLD: case Opcode::FST:
       return Format::MEMORY;
 
     case Opcode::B: case Opcode::BEQ: case Opcode::BNE: case Opcode::BGT:
@@ -151,13 +125,7 @@ inline Format format_of(Opcode op) {
   return Format::ALU3;
 }
 
-// ============================================================================
-// Field accessors
-//
-//   [31:26] opcode   [25:24] mode   [23:20] rd/fd
-//   [19:16] rs1/fs1  [15:12] rs2/fs2          [15:0] imm16
-//   [25:0] branch offset (signed, in words, PC-relative)
-// ============================================================================
+// bits: opcode [31:26], mode [25:24], rd [23:20], rs1 [19:16], imm16 [15:0]
 inline std::uint8_t  get_opcode(Word w)  { return static_cast<std::uint8_t>((w >> 26) & 0x3F); }
 inline Opcode         opcode_of(Word w)  { return static_cast<Opcode>(get_opcode(w)); }
 inline std::uint8_t  get_mode(Word w)    { return static_cast<std::uint8_t>((w >> 24) & 0x3); }
@@ -176,29 +144,26 @@ inline Sword         get_imm16_signed(Word w) {
 }
 
 inline Sword         get_offset26(Word w) {
+  // sign extend by hand, offset is only 26 bits
   Sword v = static_cast<Sword>(w & 0x03FFFFFF);
   if (v & 0x02000000) v |= ~static_cast<Sword>(0x03FFFFFF);
   return v;
 }
 
-// Immediate modifier expansion (mode 01/10/11).
 inline Word expand_immediate(std::uint8_t mode, std::uint16_t raw16) {
   switch (mode) {
     case 0x1: return static_cast<Word>(static_cast<Sword>(static_cast<std::int16_t>(raw16)));
     case 0x2: return static_cast<Word>(raw16);
     case 0x3: return static_cast<Word>(raw16) << 16;
-    default:  return Word{0};  // mode 00 == register form, no immediate
+    default:  return Word{0};
   }
 }
 
-// ============================================================================
-// Condition flags and branch conditions
-// ============================================================================
 struct Flags {
-  bool Z = false;  // zero
-  bool N = false;  // negative
-  bool C = false;  // carry / borrow
-  bool V = false;  // overflow
+  bool Z = false;
+  bool N = false;
+  bool C = false;
+  bool V = false;
 };
 
 enum class Cond : std::uint8_t { EQ = 0b00, NE = 0b01, GT = 0b10, LT = 0b11 };
@@ -223,20 +188,15 @@ inline const char* cond_name(Cond c) {
   return "??";
 }
 
-// ============================================================================
-// Micro-level contract (Sarangi, "Basic Computer Architecture", ch. 9)
-// ============================================================================
-
-// The eight microinstructions of the microassembly language.
 enum class MicroOp : std::uint8_t {
-  MLOADIR = 0,  // ir <- [pc]
-  MDECODE = 1,  // wait one cycle while the decode registers populate
-  MSWITCH = 2,  // jump to the microcode entry point of the current opcode
-  MMOV    = 3,  // dest <- src      (dest <- src, args)
-  MMOVI   = 4,  // dest <- imm      (dest <- imm, args)
-  MADD    = 5,  // dest <- dest+imm (dest <- dest+imm, args)
-  MBEQ    = 6,  // if (src == imm) upc <- target
-  MB      = 7   // upc <- target
+  MLOADIR = 0,
+  MDECODE = 1,
+  MSWITCH = 2,
+  MMOV    = 3,
+  MMOVI   = 4,
+  MADD    = 5,
+  MBEQ    = 6,
+  MB      = 7
 };
 
 inline const char* micro_op_name(MicroOp m) {
@@ -253,9 +213,6 @@ inline const char* micro_op_name(MicroOp m) {
   return "??";
 }
 
-// Internal (microprogram-visible) registers.  0 is reserved as "none".
-// The first 19 entries mirror Sarangi's Table 9.7; the remainder are the
-// RISC201 extensions (floating point + memory check).
 enum class InternalReg : std::uint8_t {
   NONE          = 0,
   PC            = 1,
@@ -277,7 +234,6 @@ enum class InternalReg : std::uint8_t {
   MAR           = 17,
   MDR           = 18,
   LD_RESULT     = 19,
-  // --- RISC201 extensions ---
   FP_SRC        = 20,
   FP_DATA       = 21,
   FP_VAL        = 22,
@@ -326,6 +282,7 @@ inline const char* internal_reg_name(InternalReg r) {
   return "??";
 }
 
+// keep in sync with teh enum above
 constexpr std::size_t kNumInternalRegs = 30;
 
-#endif  // RISC201_ISA_H
+#endif

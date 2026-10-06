@@ -1,16 +1,6 @@
 #ifndef RISC201_CU_DECODE_UNIT_H
 #define RISC201_CU_DECODE_UNIT_H
 
-// ============================================================================
-// Decode unit (Sarangi, sec. 9.5.2).
-//
-// Purely combinational: it slices the instruction register into the field
-// registers I, rd, rs1, rs2, immx and branchTarget.  branchTarget is computed
-// as pc + (offset26 << 2).  For memory-format instructions the immediate is
-// always the signed imm16 field; for the register/immediate families the two
-// mode bits select the expansion (sign / zero / high).
-// ============================================================================
-
 #include "common/internal_registers.h"
 #include "isa_spec/isa.h"
 
@@ -28,7 +18,7 @@ struct DecodeUnit {
 
     switch (fmt) {
       case Format::MEMORY:
-        out.I = true;  // base+offset addressing is always immediate-based
+        out.I = true;
         out.immx = static_cast<Word>(get_imm16_signed(ir));
         break;
 
@@ -58,6 +48,6 @@ struct DecodeUnit {
   }
 };
 
-}  // namespace risc201::cu
+}
 
-#endif  // RISC201_CU_DECODE_UNIT_H
+#endif

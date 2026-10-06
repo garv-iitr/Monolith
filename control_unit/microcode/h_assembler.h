@@ -7,10 +7,8 @@
 
 namespace risc201::cu {
 
-// Translate the symbolic program into a horizontal control memory: every
-// microinstruction carries its control signals literally, with no decode stage.
 ControlMemory<HorizontalMicroWord> assemble_horizontal(const Program& program);
 
-}  // namespace risc201::cu
+}
 
-#endif  // RISC201_CU_H_ASSEMBLER_H
+#endif
