@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-#include "]control_unit.h"
+#include "control_unit.h"
 #include "isa_spec/isa.h"
 #include "simulator_core/core/exception.h"
 
