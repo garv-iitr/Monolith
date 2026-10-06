@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-#include "control_unit.h"
+#include "]control_unit.h"
 #include "isa_spec/isa.h"
 #include "simulator_core/core/exception.h"
 
@@ -13,13 +13,15 @@ using namespace risc201::cu;
 
 namespace {
 
-constexpr int kOpcodeCount = 25;
+constexpr int kOpcodeCount = 34;
 const std::array<Opcode, kOpcodeCount> kAllOpcodes = {
     Opcode::NOP, Opcode::ADD, Opcode::SUB, Opcode::MUL, Opcode::DIV, Opcode::MOD,
     Opcode::AND, Opcode::OR,  Opcode::NOT, Opcode::XOR, Opcode::LSL, Opcode::LSR,
     Opcode::ASR, Opcode::CMP, Opcode::MOV, Opcode::LD,  Opcode::ST,
     Opcode::B,   Opcode::BEQ, Opcode::BNE, Opcode::BGT, Opcode::BLT,
-    Opcode::CALL, Opcode::RET, Opcode::HALT,
+    Opcode::CALL, Opcode::RET, Opcode::BNDCHK, Opcode::HALT,
+    Opcode::FADD, Opcode::FSUB, Opcode::FMUL, Opcode::FDIV, Opcode::FCMP,
+    Opcode::FLD,  Opcode::FST,  Opcode::FMOV,
 };
 
 Word enc_imm(Opcode op, int rd, int rs1, int imm) {

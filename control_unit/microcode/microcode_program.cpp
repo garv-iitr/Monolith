@@ -146,6 +146,162 @@ Routine ret_routine(StageLayout layout) {
 
 Routine halt_routine() { return {mhalt()}; }
 
+// ---- Format 4: BNDCHK -------------------------------------------------------
+Routine bndchk_routine() {
+  return {
+      mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),
+      mmov(IR::A, IR::REG_VAL),
+      mmov(IR::B, IR::IMMX, a_alu(AluOp::ADD)),
+      mmov(IR::MEMCHK_ADDR, IR::ALU_RESULT, a_chk(MemChkOp::CHECK), SC::CHECK),
+      mb(kPreamble),
+  };
+}
+
+// ---- Format 7: Floating-point 3-operand (FADD, FSUB, FMUL, FDIV) ------------
+Routine fpu3(FpuOp op) {
+  return {
+      mmov(IR::FP_SRC, IR::RS1, a_fpu(FpuOp::READ)),
+      mmov(IR::FP_A, IR::FP_VAL),
+      mmov(IR::FP_SRC, IR::RS2, a_fpu(FpuOp::READ)),
+      mmov(IR::FP_B, IR::FP_VAL, a_fpu(op)),
+      mmov(IR::FP_DATA, IR::FPU_RESULT),
+      mmov(IR::FP_SRC, IR::RD, a_fpu(FpuOp::WRITE), SC::WRITEBACK),
+      mb(kPreamble),
+  };
+}
+
+// ---- Format 8: Floating-point 2-operand (FCMP, FMOV) ------------------------
+Routine fcmp_routine() {
+  return {
+      mmov(IR::FP_SRC, IR::RS1, a_fpu(FpuOp::READ)),
+      mmov(IR::FP_A, IR::FP_VAL),
+      mmov(IR::FP_SRC, IR::RS2, a_fpu(FpuOp::READ)),
+      mmov(IR::FP_B, IR::FP_VAL, a_fpu(FpuOp::FCMP)),
+      mb(kPreamble),
+  };
+}
+
+Routine fmov_routine() {
+  return {
+      mmov(IR::FP_SRC, IR::RS2, a_fpu(FpuOp::READ)),
+      mmov(IR::FP_B, IR::FP_VAL, a_fpu(FpuOp::FMOV)),
+      mmov(IR::FP_DATA, IR::FPU_RESULT),
+      mmov(IR::FP_SRC, IR::RD, a_fpu(FpuOp::WRITE), SC::WRITEBACK),
+      mb(kPreamble),
+  };
+}
+
+// ---- Format 4: Floating-point memory (FLD, FST) -----------------------------
+Routine fld_routine(StageLayout layout) {
+  Routine r = {
+      mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),
+      mmov(IR::A, IR::REG_VAL),
+      mmov(IR::B, IR::IMMX, a_alu(AluOp::ADD)),
+  };
+  if (layout == StageLayout::SIX_STAGE) {
+    r.push_back(mmov(IR::MEMCHK_ADDR, IR::ALU_RESULT, a_chk(MemChkOp::CHECK), SC::CHECK));
+  }
+  r.push_back(mmov(IR::MAR, IR::ALU_RESULT, a_mem(MemOp::READ), SC::MEMORY));
+  r.push_back(mmov(IR::FP_DATA, IR::LD_RESULT, 0, SC::MEMORY));
+  r.push_back(mmov(IR::FP_SRC, IR::RD, a_fpu(FpuOp::WRITE), SC::WRITEBACK));
+  r.push_back(mb(kPreamble));
+  return r;
+}
+
+Routine fst_routine(StageLayout layout) {
+  Routine r = {
+      mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),
+      mmov(IR::A, IR::REG_VAL),
+      mmov(IR::B, IR::IMMX, a_alu(AluOp::ADD)),
+  };
+  if (layout == StageLayout::SIX_STAGE) {
+    r.push_back(mmov(IR::MEMCHK_ADDR, IR::ALU_RESULT, a_chk(MemChkOp::CHECK), SC::CHECK));
+  }
+  r.push_back(mmov(IR::MAR, IR::ALU_RESULT, 0, SC::MEMORY));
+  r.push_back(mmov(IR::FP_SRC, IR::RD, a_fpu(FpuOp::READ), SC::MEMORY));
+  r.push_back(mmov(IR::MDR, IR::FP_VAL, a_mem(MemOp::WRITE), SC::MEMORY));
+  r.push_back(mb(kPreamble));
+  return r;
+}
+
+// ---- Format 4: BNDCHK -------------------------------------------------------
+Routine bndchk_routine() {
+  return {
+      mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),
+      mmov(IR::A, IR::REG_VAL),
+      mmov(IR::B, IR::IMMX, a_alu(AluOp::ADD)),
+      mmov(IR::MEMCHK_ADDR, IR::ALU_RESULT, a_chk(MemChkOp::CHECK), SC::CHECK),
+      mb(kPreamble),
+  };
+}
+
+// ---- Format 7: Floating-point 3-operand (FADD, FSUB, FMUL, FDIV) ------------
+Routine fpu3(FpuOp op) {
+  return {
+      mmov(IR::FP_SRC, IR::RS1, a_fpu(FpuOp::READ)),
+      mmov(IR::FP_A, IR::FP_VAL),
+      mmov(IR::FP_SRC, IR::RS2, a_fpu(FpuOp::READ)),
+      mmov(IR::FP_B, IR::FP_VAL, a_fpu(op)),
+      mmov(IR::FP_DATA, IR::FPU_RESULT),
+      mmov(IR::FP_SRC, IR::RD, a_fpu(FpuOp::WRITE), SC::WRITEBACK),
+      mb(kPreamble),
+  };
+}
+
+// ---- Format 8: Floating-point 2-operand (FCMP, FMOV) ------------------------
+Routine fcmp_routine() {
+  return {
+      mmov(IR::FP_SRC, IR::RS1, a_fpu(FpuOp::READ)),
+      mmov(IR::FP_A, IR::FP_VAL),
+      mmov(IR::FP_SRC, IR::RS2, a_fpu(FpuOp::READ)),
+      mmov(IR::FP_B, IR::FP_VAL, a_fpu(FpuOp::FCMP)),
+      mb(kPreamble),
+  };
+}
+
+Routine fmov_routine() {
+  return {
+      mmov(IR::FP_SRC, IR::RS2, a_fpu(FpuOp::READ)),
+      mmov(IR::FP_B, IR::FP_VAL, a_fpu(FpuOp::FMOV)),
+      mmov(IR::FP_DATA, IR::FPU_RESULT),
+      mmov(IR::FP_SRC, IR::RD, a_fpu(FpuOp::WRITE), SC::WRITEBACK),
+      mb(kPreamble),
+  };
+}
+
+// ---- Format 4: Floating-point memory (FLD, FST) -----------------------------
+Routine fld_routine(StageLayout layout) {
+  Routine r = {
+      mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),
+      mmov(IR::A, IR::REG_VAL),
+      mmov(IR::B, IR::IMMX, a_alu(AluOp::ADD)),
+  };
+  if (layout == StageLayout::SIX_STAGE) {
+    r.push_back(mmov(IR::MEMCHK_ADDR, IR::ALU_RESULT, a_chk(MemChkOp::CHECK), SC::CHECK));
+  }
+  r.push_back(mmov(IR::MAR, IR::ALU_RESULT, a_mem(MemOp::READ), SC::MEMORY));
+  r.push_back(mmov(IR::FP_DATA, IR::LD_RESULT, 0, SC::MEMORY));
+  r.push_back(mmov(IR::FP_SRC, IR::RD, a_fpu(FpuOp::WRITE), SC::WRITEBACK));
+  r.push_back(mb(kPreamble));
+  return r;
+}
+
+Routine fst_routine(StageLayout layout) {
+  Routine r = {
+      mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),
+      mmov(IR::A, IR::REG_VAL),
+      mmov(IR::B, IR::IMMX, a_alu(AluOp::ADD)),
+  };
+  if (layout == StageLayout::SIX_STAGE) {
+    r.push_back(mmov(IR::MEMCHK_ADDR, IR::ALU_RESULT, a_chk(MemChkOp::CHECK), SC::CHECK));
+  }
+  r.push_back(mmov(IR::MAR, IR::ALU_RESULT, 0, SC::MEMORY));
+  r.push_back(mmov(IR::FP_SRC, IR::RD, a_fpu(FpuOp::READ), SC::MEMORY));
+  r.push_back(mmov(IR::MDR, IR::FP_VAL, a_mem(MemOp::WRITE), SC::MEMORY));
+  r.push_back(mb(kPreamble));
+  return r;
+}
+
 }
 
 Program build_program(StageLayout layout) {
@@ -181,6 +337,21 @@ Program build_program(StageLayout layout) {
   add(Opcode::HALT, halt_routine());
 
   add(Opcode::NOP, {mb(kPreamble)});
+
+  // FPU, format 7/8
+  add(Opcode::FADD, fpu3(FpuOp::FADD));
+  add(Opcode::FSUB, fpu3(FpuOp::FSUB));
+  add(Opcode::FMUL, fpu3(FpuOp::FMUL));
+  add(Opcode::FDIV, fpu3(FpuOp::FDIV));
+  add(Opcode::FCMP, fcmp_routine());
+  add(Opcode::FMOV, fmov_routine());
+
+  // FPU memory, format 4
+  add(Opcode::FLD, fld_routine(layout));
+  add(Opcode::FST, fst_routine(layout));
+
+  // Memory bounds check
+  add(Opcode::BNDCHK, bndchk_routine());
 
   return p;
 }

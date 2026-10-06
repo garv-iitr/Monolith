@@ -5,6 +5,7 @@ namespace risc201::cu {
 void InternalRegisters::reset() {
   pc = 0;
   ir = 0;
+  mode = 0;
   I = false;
   rd = rs1 = rs2 = 0;
   immx = 0;
@@ -15,6 +16,7 @@ void InternalRegisters::reset() {
   flags = Flags{};
   flags_E = false;
   flags_GT = false;
+  flags_N = false;
   mar = mdr = ld_result = 0;
   fp_src = 0;
   fp_data = fp_val = 0;
@@ -97,6 +99,7 @@ void InternalRegisters::set(InternalReg reg, Word value) {
   // these two are just mirrors of the real flags, keep em synced
   flags_E = flags.Z;
   flags_GT = !flags.N && !flags.Z;
+  flags_N = flags.N;
 }
 
 }
