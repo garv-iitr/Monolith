@@ -18,11 +18,13 @@ struct DecodeUnit {
 
     switch (fmt) {
       case Format::MEMORY:
-        out.I = true;
+        out.mode = 1;  
+        out.I = true;  
         out.immx = static_cast<Word>(get_imm16_signed(ir));
         break;
 
       case Format::BRANCH:
+        out.mode = 0;
         out.I = false;
         out.immx = 0;
         out.branch_target = in.pc + (static_cast<Word>(get_offset26(ir)) << 2);
@@ -32,6 +34,7 @@ struct DecodeUnit {
       case Format::ALU2:
       case Format::COMPARE: {
         const std::uint8_t mode = get_mode(ir);
+        out.mode = mode;
         out.I = (mode != 0);
         out.immx = expand_immediate(mode, get_imm16(ir));
         break;
@@ -41,6 +44,7 @@ struct DecodeUnit {
       case Format::FPU3:
       case Format::FPU2:
       default:
+        out.mode = 0;
         out.I = false;
         out.immx = 0;
         break;

@@ -82,7 +82,7 @@ mswitch          ; dispatch on the opcode
 Microcode is written once in a symbolic micro-assembly language
 (`microcode/micro_asm.h`) and placed by `microcode/routine_layout.h`. The
 microprogram itself is `microcode/microcode_program.cpp` — one routine per
-RISC201 opcode (all 37). Two assemblers translate the same listing:
+RISC201 opcode (all 34). Two assemblers translate the same listing:
 
 * `microcode/h_assembler.cpp` -> `ControlMemory<HorizontalMicroWord>` (signals
   embedded; no decode stage; `horizontal/h_codec.h` is a wire-through).
@@ -94,8 +94,8 @@ the micro-fetch mux and the `switch` unit (`common/micro_sequencer.h`).
 
 ### Encodings
 
-* Horizontal (Sarangi fig. 9.26): ~65 bits — signals + 12-bit imm + 10-bit
-  target + 10-bit args. Larger storage, no decoder.
+* Horizontal (Sarangi fig. 9.26 scaled to 30 internal registers): 77 bits — 45
+  control signals + 12-bit imm + 10-bit target + 10-bit args. Larger storage, no decoder.
 * Vertical (Sarangi fig. 9.24): 45 bits — `type[3] src[5] dest[5] imm[12]
   target[10] args[10]`. Smaller storage, needs the micro-decoder.
 

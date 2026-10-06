@@ -67,7 +67,7 @@ The MCU supports four distinct configurations. All four run the identical microp
 
 ```
                          CONTROL MEMORY ENCODING
-                       Horizontal (65b)      Vertical (45b)
+                       Horizontal (77b)      Vertical (45b)
                    +-----------------------+----------------------+
           4-Stage  |  Horizontal 4-Stage   |   Vertical 4-Stage   |
 PIPELINE           |  Fastest Clock,       |   Compact ROM,       |
@@ -83,17 +83,17 @@ LAYOUT             |  Minimal Latency      |   Standard Pipeline  |
 
 | Metric / Dimension | Horizontal Control Unit | Vertical Control Unit |
 | :--- | :--- | :--- |
-| **Control ROM Width** | **65 bits** (`HorizontalMicroWord`) | **45 bits** (`VerticalMicroWord`) |
-| **ROM Storage Savings** | Baseline ($1.0\times$) | **$30.8\%$ ROM bit reduction** ($0.692\times$) |
+| **Control ROM Width** | **77 bits** (`HorizontalMicroWord`: 45 control signals + 12b imm + 10b target + 10b args) | **45 bits** (`VerticalMicroWord`: 3b op + 5b src + 5b dest + 12b imm + 10b target + 10b args) |
+| **ROM Storage Savings** | Baseline ($1.0\times$) | **$41.6\%$ ROM bit reduction** ($0.584\times$) |
 | **Decoding Circuitry** | **None** (`h_codec.h` is a direct wirethrough) | **Combinational $\mu$-Decoder** (`v_decoder.cpp`) |
 | **Decoder Gate Delay** | **$T_{dec} = 0$ ns** | **$T_{dec} > 0$ ns** (multi-level gate delay) |
 | **Critical Path** | $T_{clk} \ge T_{ROM\_access} + T_{bus} + T_{unit\_setup}$ | $T_{clk} \ge T_{ROM\_access} + T_{dec} + T_{bus} + T_{unit\_setup}$ |
 | **Hardware Complexity** | Wider interconnect routing; larger silicon area | Smaller ROM footprint; extra combinational logic area |
 
-- **Horizontal Microprogramming (Sarangi §9.8.2):** Each bit in the control word corresponds directly to a physical control wire in the datapath (multiplexer select lines, register write/read enables, unit operation codes). There is no combinational decoding delay. It maximizes clock frequency at the expense of wider ROM memory cells.
+- **Horizontal Microprogramming (Sarangi §9.8.2 scaled to Monolith):** Each bit in the control signal field corresponds directly to a physical control wire or grouped selector in the datapath. In Monolith's 30-register architecture, there are 45 physical control signal lines (30 read enable wires, 5 write-source selector lines, 2 transfer MUX lines, and 8 strobes/sequencer lines). There is no combinational decoding delay. It maximizes clock frequency at the expense of wider ROM memory cells.
 - **Vertical Microprogramming (Sarangi §9.8.1):** Control signals are mutually exclusive within functional groups. The control word packs micro-operations into compact fields:
   $$\text{Word (45b)} = \text{op}[3\text{b}] \parallel \text{src}[5\text{b}] \parallel \text{dest}[5\text{b}] \parallel \text{imm}[12\text{b}] \parallel \text{target}[10\text{b}] \parallel \text{args}[10\text{b}]$$
-  A combinational **$\mu$-Decoder** expands these 45 bits into the 33 physical signals before driving the datapath.
+  A combinational **$\mu$-Decoder** expands these 45 bits into the 45 physical control signals before driving the datapath.
 
 ### 2.2 4-Stage vs. 6-Stage Pipeline Layouts
 
@@ -113,7 +113,7 @@ $$\begin{aligned}
 | :--- | :--- | :--- | :--- | :--- |
 | **Class in Code** | `MicroControlUnit<HorizontalMicroWord, HorizontalCodec>` | `MicroControlUnit<HorizontalMicroWord, HorizontalCodec>` | `MicroControlUnit<VerticalMicroWord, VerticalCodec>` | `MicroControlUnit<VerticalMicroWord, VerticalCodec>` |
 | **Layout Parameter** | `StageLayout::FOUR_STAGE` | `StageLayout::SIX_STAGE` | `StageLayout::FOUR_STAGE` | `StageLayout::SIX_STAGE` |
-| **Memory Word** | 65-bit unencoded | 65-bit unencoded | 45-bit encoded | 45-bit encoded |
+| **Memory Word** | 77-bit unencoded | 77-bit unencoded | 45-bit encoded | 45-bit encoded |
 | **Decoder Unit** | Bypassed | Bypassed | Active (`VerticalDecoder`) | Active (`VerticalDecoder`) |
 | **`MEMCHK` Cycle** | Skipped | **Active** (+1 cycle on mem ops) | Skipped | **Active** (+1 cycle on mem ops) |
 | **Best Used For** | High-performance integer kernels | High-speed safe computing | Area-constrained embedded systems | High-reliability mission-critical systems |
@@ -213,49 +213,48 @@ In Sarangi, microcode tables are manually calculated on paper. In Monolith:
 
 ## 4. Master Control Signals Specification
 
-### 4.1 Complete Enumeration of All 33 Control Signals
+### 4.1 Physical Control Signals (45 Lines)
 
-Every micro-cycle, the control unit outputs a 33-signal bundle (`ControlSignals`):
+Every micro-cycle, the control unit outputs **45 discrete physical control signal lines** (`kHorizontalControlSignalBits`):
 
 ```
 +----+---------------+-------+---------------+-------------------------------------------------------------+
 | #  | SIGNAL NAME   | WIDTH | DEFAULT VALUE | FUNCTIONAL DESCRIPTION                                      |
 +----+---------------+-------+---------------+-------------------------------------------------------------+
-| 1  | write_src     | 5b    | NONE (0)      | Selects 1 of 21 internal registers to drive the WRITE BUS.  |
-| 2  | read_mask     | 21b   | 0 (No latch)  | One-hot latch mask for 21 internal registers on READ BUS.   |
+| 1  | write_src     | 5b    | NONE (0)      | Selects 1 of 30 internal registers to drive the WRITE BUS.  |
+| 2  | read_mask     | 30b   | 0 (No latch)  | One-hot latch mask for 30 internal registers on READ BUS.   |
 | 3  | transfer_sel  | 2b    | WRITE_BUS (0) | 00: Write Bus -> Read Bus                                   |
 |    |               |       |               | 01: Micro-Immediate (muimm) -> Read Bus                     |
 |    |               |       |               | 10: Micro-Adder (write_bus + muimm) -> Read Bus             |
 | 4  | fetch_ir      | 1b    | 0 (Inactive)  | Strobe: Loads instruction from Instruction Memory[PC] -> IR.|
-| 5  | alu_op        | 4b    | NOP (0)       | Commands Atharva's ALU: ADD, SUB, MUL, DIV, MOD, AND, OR,   |
-|    |               |       |               | NOT, XOR, LSL, LSR, ASR, CMP, PASS_A, PASS_B.               |
-| 6  | set_flags     | 1b    | 0 (Inactive)  | Enables ALU to latch and commit flags (Z, N, C, V, E, GT).  |
-| 7  | reg_op        | 2b    | NOP (0)       | Commands Register File: 01 = READ, 10 = WRITE.              |
-| 8  | mem_op        | 2b    | NOP (0)       | Commands Data Memory: 01 = READ, 10 = WRITE.                |
-| 9  | fpu_op        | 4b    | NOP (0)       | Commands FPU: FADD, FSUB, FMUL, FDIV, FCMP, FMOV, READ, WR. |
-| 10 | fpu_set_fcc   | 1b    | 0 (Inactive)  | Commits Floating-Point Condition Code (FCC).                 |
-| 11 | memchk_op     | 1b    | NOP (0)       | Commands Paraas's Memory Safety unit: 1 = CHECK.            |
-| 12 | next_addr     | 3b    | INCREMENT (0) | Steers Micro-Sequencer:                                     |
+| 5  | set_flags     | 1b    | 0 (Inactive)  | Enables ALU to latch and commit flags (Z, N, C, V, E, GT).  |
+| 6  | fpu_set_fcc   | 1b    | 0 (Inactive)  | Commits Floating-Point Condition Code (FCC).                 |
+| 7  | memchk_op     | 1b    | NOP (0)       | Commands Paraas's Memory Safety unit: 1 = CHECK.            |
+| 8  | halt          | 1b    | 0 (Running)   | Asserts processor HALT state; disables sequencer clock.     |
+| 9  | next_addr     | 3b    | INCREMENT (0) | Steers Micro-Sequencer:                                     |
 |    |               |       |               | 000: INCREMENT   (μPC <- μPC + 1)                           |
 |    |               |       |               | 001: MSWITCH     (μPC <- entry_table[opcode])               |
 |    |               |       |               | 010: JUMP        (μPC <- jump_target)                       |
 |    |               |       |               | 011: BRANCH_COND (μPC <- isMBranch ? target : μPC + 1)      |
 |    |               |       |               | 100: FETCH       (μPC <- 0, preamble restart)               |
-| 13 | jump_target   | 10b   | 0             | Micro-branch destination address (0..1023).                 |
-| 14 | halt          | 1b    | 0 (Running)   | Asserts processor HALT state; disables sequencer clock.     |
 +----+---------------+-------+---------------+-------------------------------------------------------------+
+Total Pure Control Signal Lines = 30 + 5 + 2 + 1 + 1 + 1 + 1 + 1 + 3 = 45 bits.
+Horizontal Micro-Word Width = 45 (control lines) + 12 (imm) + 10 (target) + 10 (unit args) = 77 bits.
 ```
 
-### 4.2 Internal Register Bank Map (21 Microcode-Visible Latches)
+### 4.2 Internal Register Bank Map (30 Microcode-Visible Latches)
+
+Mapped directly to indices 0..29 in `isa_spec/isa.h` (`kNumInternalRegs = 30`):
 
 ```
-Bit  0: NONE            Bit  7: immx            Bit 14: alu_result
-Bit  1: PC              Bit  8: branch_target   Bit 15: mar
-Bit  2: IR              Bit  9: reg_src         Bit 16: mdr
-Bit  3: I               Bit 10: reg_data        Bit 17: ld_result
-Bit  4: rd              Bit 11: reg_val         Bit 18: fp_src / fp_data
-Bit  5: rs1             Bit 12: A               Bit 19: fp_a / fp_b / fpu_result
-Bit  6: rs2             Bit 13: B               Bit 20: memchk_addr
+Bit  0: NONE            Bit  8: branch_target   Bit 16: alu_result      Bit 24: fp_b
+Bit  1: PC              Bit  9: reg_src         Bit 17: mar             Bit 25: fpu_result
+Bit  2: IR              Bit 10: reg_data        Bit 18: mdr             Bit 26: fcc
+Bit  3: I               Bit 11: reg_val         Bit 19: ld_result       Bit 27: memchk_status
+Bit  4: rd              Bit 12: A               Bit 20: fp_src          Bit 28: memchk_addr
+Bit  5: rs1             Bit 13: B               Bit 21: fp_data         Bit 29: flags.N
+Bit  6: rs2             Bit 14: flags.E         Bit 22: fp_val
+Bit  7: immx            Bit 15: flags.GT        Bit 23: fp_a
 ```
 
 ### 4.3 Signal Multiplexing & Timing Semantics
@@ -393,9 +392,9 @@ Every clock tick in `MicroControlUnit::step()` executes through five synchronous
 
 To achieve full marks and deliver a production-quality processor, the team should address the following five areas:
 
-### 7.1 Missing Microcode Routines (FPU & BNDCHK)
-- **Current State:** `build_program()` registers 25 opcodes. FPU instructions (`FADD`, `FSUB`, `FMUL`, `FDIV`, `FCMP`, `FLD`, `FST`, `FMOV`) and `BNDCHK` are omitted, causing matrix multiplication and bubble sort test suites to halt with `"illegal instruction"`.
-- **Target Fix:** Author `fpu3_routine()`, `fcmp_routine()`, `fld_routine()`, `fst_routine()`, and `bndchk_routine()` in `microcode_program.cpp`. This will bring coverage to all 34 opcodes.
+### 7.1 Full 34-Opcode Implementation (Completed)
+- **Status:** All 34 ISA opcodes (`ADD..ASR`, `NOT`, `MOV`, `CMP`, `LD`, `ST`, `B..BLT`, `CALL`, `RET`, `HALT`, `NOP`, `FADD`, `FSUB`, `FMUL`, `FDIV`, `FCMP`, `FLD`, `FST`, `FMOV`, `BNDCHK`) now have dedicated microcode routines in `control_unit/microcode/microcode_program.cpp`.
+- **Verification:** All 16 unit tests in `risc201-tests.exe` (including Fibonacci, 2x2 Matrix Multiply + FPU kernel, and Bubble Sort + Checksum) pass with zero errors across all four MCU configurations.
 
 ### 7.2 Single-Bus Latency Bottleneck
 - **Current State:** A single shared bus requires serialized transfers. For example, `ADD r1, r2, r3` requires:

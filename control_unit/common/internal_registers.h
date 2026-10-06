@@ -11,7 +11,9 @@ struct InternalRegisters {
   Word pc = 0;
   Word ir = 0;
 
-  bool      I = false;
+  // decode unit 
+  std::uint8_t mode = 0;         
+  bool         I = false;        
   std::uint8_t rd = 0;
   std::uint8_t rs1 = 0;
   std::uint8_t rs2 = 0;
@@ -25,10 +27,12 @@ struct InternalRegisters {
   Word A = 0;
   Word B = 0;
   Word alu_result = 0;
-  Flags flags{};
-  bool  flags_E = false;
-  bool  flags_GT = false;
+  Flags flags{};                 
+  bool  flags_E = false;         
+  bool  flags_GT = false;        
+  bool  flags_N = false;         
 
+  // --- memory unit ----------------------------------------------------------
   Word mar = 0;
   Word mdr = 0;
   Word ld_result = 0;
