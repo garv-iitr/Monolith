@@ -48,4 +48,4 @@ void MemoryUnit::tick(const InternalRegisters& cur, const ControlSignals& sig,
   }
 }
 
-}  // namespace risc201::cu
+}

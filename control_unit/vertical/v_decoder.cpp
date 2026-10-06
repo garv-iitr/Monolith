@@ -5,7 +5,7 @@
 namespace risc201::cu {
 
 DecodedMicro VerticalDecoder::decode(const VerticalMicroWord& w) {
-  // Sign-extend the 12-bit immediate field.
+  // signed 12 bit imm, sign extend from bit 11
   const std::int32_t raw_imm = w.imm & 0xFFF;
   const std::int32_t imm = (raw_imm & 0x800) ? (raw_imm - 0x1000) : raw_imm;
 
@@ -15,4 +15,4 @@ DecodedMicro VerticalDecoder::decode(const VerticalMicroWord& w) {
   return d;
 }
 
-}  // namespace risc201::cu
+}

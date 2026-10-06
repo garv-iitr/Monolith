@@ -1,9 +1,3 @@
-// ============================================================
-// assembler.cpp — RISC201 two-pass assembler implementation
-//
-// Pass 1: tokenise, expand macros/li, record labels, size instructions.
-// Pass 2: resolve labels/equs, encode all instructions, build listing.
-// ============================================================
 #include "assembler.hpp"
 #include "formats.hpp"
 #include "macros.hpp"
@@ -31,9 +25,6 @@ static bool isValidIdentifier(const std::string& s) {
     return true;
 }
 
-// ============================================================
-// Utility: trim whitespace
-// ============================================================
 std::string Assembler::trim(const std::string& s) {
     size_t a = s.find_first_not_of(" \t\r\n");
     if (a == std::string::npos) return "";
@@ -41,17 +32,13 @@ std::string Assembler::trim(const std::string& s) {
     return s.substr(a, b - a + 1);
 }
 
-// ============================================================
-// stripComment — remove comments (# at line start, or trailing @, ;, //)
-// ============================================================
 std::string Assembler::stripComment(const std::string& line) {
-    // If the first non-space character is '#', the whole line is a comment
     size_t firstNonSpace = line.find_first_not_of(" \t\r\n");
     if (firstNonSpace != std::string::npos && line[firstNonSpace] == '#') {
         return "";
     }
 
-    bool inSingleQuote = false; // not used in RISC201 but defensive
+    bool inSingleQuote = false;
     for (size_t i = 0; i < line.size(); ++i) {
         char c = line[i];
         if (c == '@' || c == ';')
@@ -63,9 +50,6 @@ std::string Assembler::stripComment(const std::string& line) {
     return line;
 }
 
-// ============================================================
-// splitOperands — split comma-separated operands, trim each
-// ============================================================
 std::vector<std::string> Assembler::splitOperands(const std::string& s) {
     std::vector<std::string> result;
     std::string cur;
@@ -81,9 +65,6 @@ std::vector<std::string> Assembler::splitOperands(const std::string& s) {
     return result;
 }
 
-// ============================================================
-// addError — record a formatted error message
-// ============================================================
 void Assembler::addError(int line, const std::string& msg) {
     std::ostringstream oss;
     oss << filename_ << ":" << line << ": error: " << msg;
@@ -96,15 +77,11 @@ void Assembler::addWarning(int line, const std::string& msg) {
     warnings_.push_back(oss.str());
 }
 
-// ============================================================
-// parseLine — extract label, mnemonic, and operand tokens
-// ============================================================
 Assembler::ParsedLine Assembler::parseLine(const std::string& rawLine) const {
     ParsedLine pl;
     std::string line = trim(stripComment(rawLine));
     if (line.empty()) return pl;
 
-    // Check for a label: find ':'
     size_t colonPos = line.find(':');
     if (colonPos != std::string::npos) {
         std::string candidate = trim(line.substr(0, colonPos));
@@ -124,29 +101,22 @@ Assembler::ParsedLine Assembler::parseLine(const std::string& rawLine) const {
         }
     }
 
-    // Now parse mnemonic (first whitespace-delimited token)
     size_t i = 0;
     while (i < line.size() && !std::isspace(static_cast<unsigned char>(line[i])))
         ++i;
     pl.mnemonic = line.substr(0, i);
     std::string rest = trim(line.substr(i));
 
-    // Operands: split by commas
     if (!rest.empty())
         pl.tokens = splitOperands(rest);
 
     return pl;
 }
 
-// ============================================================
-// parseNumber — parse a plain number string (dec/0x/0b)
-// ============================================================
 int64_t Assembler::parseNumber(const std::string& raw) {
     std::string s = trim(raw);
     if (s.empty()) throw std::runtime_error("empty number");
-    // Strip leading '#'
     if (s[0] == '#') s = s.substr(1);
-    // Strip suffix (u/h/H)
     if (!s.empty()) {
         char last = s.back();
         if (last == 'u' || last == 'U' || last == 'h' || last == 'H')
@@ -178,26 +148,19 @@ int64_t Assembler::parseNumber(const std::string& raw) {
     return neg ? -v : v;
 }
 
-// ============================================================
-// resolveImm — resolve an immediate token (possibly a .equ name)
-// Returns the token with any suffix preserved (for parseImm).
-// ============================================================
 std::string Assembler::resolveImm(const std::string& tok,
                                   const SymbolTable& syms) const {
     std::string s = trim(tok);
     if (s.empty()) return s;
 
-    // Strip optional '#'
     std::string base = s;
     if (!base.empty() && base[0] == '#') base = base.substr(1);
 
-    // First check if base is already a .equ name (e.g., WIDTH, LENGTH)
     auto it = syms.find(base);
     if (it != syms.end() && it->second.isEqu) {
         return std::to_string(static_cast<int64_t>(static_cast<int32_t>(it->second.address)));
     }
 
-    // Extract suffix if present, checking if prefix is a .equ name
     std::string suffix;
     if (!base.empty()) {
         char last = base.back();
@@ -212,8 +175,6 @@ std::string Assembler::resolveImm(const std::string& tok,
         }
     }
 
-    // Is base a number?
-    // Try parsing: if it fails, it might be a .equ name
     bool isNum = !base.empty();
     {
         bool neg = false;
@@ -232,36 +193,27 @@ std::string Assembler::resolveImm(const std::string& tok,
         }
     }
 
-    if (isNum) return s; // already a number; return as-is
+    if (isNum) return s;
 
-    // Try as a .equ name
     it = syms.find(base);
     if (it != syms.end() && it->second.isEqu) {
-        // Replace name with its numeric value, reattach suffix
         return std::to_string(static_cast<int64_t>(static_cast<int32_t>(it->second.address))) + suffix;
     }
 
-    // Not a number and not a .equ: return as-is (might be a label for data directives)
     return s;
 }
 
-// ============================================================
-// resolveLabel — look up a label, return its byte address
-// ============================================================
 uint32_t Assembler::resolveLabel(const std::string& name,
                                  const SymbolTable& syms,
-                                 int /*srcLine*/) const {
+                                 int ) const {
     auto it = syms.find(name);
     if (it == syms.end())
         throw std::runtime_error("undefined label '" + name + "'");
     if (it->second.isEqu)
-        return it->second.address; // .equ used as a label value is its value
+        return it->second.address;
     return it->second.address;
 }
 
-// ============================================================
-// resolveValue32 — resolve a token to a 32-bit value
-// ============================================================
 uint32_t Assembler::resolveValue32(const std::string& tok,
                                    const SymbolTable& syms) const {
     std::string s = trim(tok);
@@ -272,14 +224,12 @@ uint32_t Assembler::resolveValue32(const std::string& tok,
     else if (s[0] == '+') { s = trim(s.substr(1)); }
     if (!s.empty() && s[0] == '#') s = s.substr(1);
 
-    // Try as .equ or label first
     auto it = syms.find(s);
     if (it != syms.end()) {
         uint32_t val = it->second.address;
         return neg ? static_cast<uint32_t>(-static_cast<int64_t>(val)) : val;
     }
 
-    // Try parsing as a number
     int64_t v = 0;
     try {
         v = parseNumber(s);
@@ -293,9 +243,6 @@ uint32_t Assembler::resolveValue32(const std::string& tok,
     return static_cast<uint32_t>(v);
 }
 
-// ============================================================
-// assemble() — main entry point
-// ============================================================
 AssemblyResult Assembler::assemble(const std::string& source,
                                    const std::string& filename,
                                    const AssemblyOptions& opts) {
@@ -311,23 +258,15 @@ AssemblyResult Assembler::assemble(const std::string& source,
     MacroExpander macExp;
     const ISA& isa = ISA::instance();
 
-    // ================================================================
-    // PASS 1: tokenise, expand macros/li, record labels, build
-    //         the expanded-line list, build the symbol table.
-    // ================================================================
-    std::vector<ExpandedLine> lines; // the expanded instruction list
+    std::vector<ExpandedLine> lines;
 
-    // Location counters per section
     uint32_t textLC = opts.textBase;
     uint32_t dataLC = opts.dataBase;
 
-    // Current section: "text" or "data"
     std::string curSection = "text";
 
-    // Symbol table (built during pass 1)
     SymbolTable syms;
 
-    // Split source into individual lines
     std::vector<std::string> srcLines;
     {
         std::istringstream ss(source);
@@ -336,7 +275,6 @@ AssemblyResult Assembler::assemble(const std::string& source,
             srcLines.push_back(ln);
     }
 
-    // Helper to record a label
     auto defineLabel = [&](const std::string& label, int lineNum) {
         if (label.empty()) return;
         if (syms.count(label)) {
@@ -347,7 +285,6 @@ AssemblyResult Assembler::assemble(const std::string& source,
         syms[label] = {addr, curSection, false, lineNum};
     };
 
-    // Inline lambda to add an instruction ExpandedLine
     auto addInstr = [&](const std::string& mnem,
                         const std::vector<std::string>& toks,
                         int lineNum, const std::string& srcText) {
@@ -374,17 +311,14 @@ AssemblyResult Assembler::assemble(const std::string& source,
             continue;
         }
 
-        // Define label (before advancing LC)
         if (!pl.label.empty())
             defineLabel(pl.label, lineNum);
 
-        if (pl.mnemonic.empty()) continue; // label-only or blank line
+        if (pl.mnemonic.empty()) continue;
 
-        // Upper-case mnemonic for comparison
         std::string up = pl.mnemonic;
         for (char& c : up) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
 
-        // ---- Directives ----------------------------------------
         if (up == ".TEXT") {
             curSection = "text";
             continue;
@@ -394,17 +328,14 @@ AssemblyResult Assembler::assemble(const std::string& source,
             continue;
         }
         if (up == ".EQU") {
-            // .equ NAME, value
             if (pl.tokens.size() < 2) {
                 addError(lineNum, ".equ requires NAME and value");
                 continue;
             }
             std::string equName = trim(pl.tokens[0]);
             std::string equVal  = trim(pl.tokens[1]);
-            // Value must be a literal or an earlier .equ
             int64_t val = 0;
             bool ok = false;
-            // Try as earlier .equ
             auto sit = syms.find(equVal);
             if (sit != syms.end() && sit->second.isEqu) {
                 val = static_cast<int64_t>(sit->second.address);
@@ -479,9 +410,7 @@ AssemblyResult Assembler::assemble(const std::string& source,
             continue;
         }
 
-        // ---- LI pseudo-instruction -----------------------------
         if (up == "LI") {
-            // li rd, value32
             if (pl.tokens.size() != 2) {
                 addError(lineNum, "li requires 2 operands (rd, value32)");
                 continue;
@@ -497,7 +426,6 @@ AssemblyResult Assembler::assemble(const std::string& source,
 
             uint32_t& lc = (curSection == "text") ? textLC : dataLC;
 
-            // LI_HIGH: mov rd, (value32 >> 16)h
             {
                 ExpandedLine el;
                 el.kind    = LineKind::LI_HIGH;
@@ -510,7 +438,6 @@ AssemblyResult Assembler::assemble(const std::string& source,
                 lines.push_back(el);
                 lc += 4;
             }
-            // LI_LOW: or rd, rd, (value32 & 0xFFFF)u
             {
                 ExpandedLine el;
                 el.kind    = LineKind::LI_LOW;
@@ -526,13 +453,11 @@ AssemblyResult Assembler::assemble(const std::string& source,
             continue;
         }
 
-        // ---- Macros --------------------------------------------
         if (macExp.isMacro(up)) {
             if (pl.tokens.size() != 1) {
                 addError(lineNum, "macro " + up + " requires exactly 1 register operand");
                 continue;
             }
-            // Validate register class in pass 1
             bool regOk = true;
             try {
                 const MacroDef& md = macExp.getDef(up);
@@ -555,7 +480,6 @@ AssemblyResult Assembler::assemble(const std::string& source,
                 continue;
             }
 
-            // Expand and add instructions
             try {
                 std::vector<std::string> expanded = macExp.expand(up, pl.tokens[0]);
                 for (size_t ei = 0; ei < expanded.size(); ++ei) {
@@ -573,17 +497,13 @@ AssemblyResult Assembler::assemble(const std::string& source,
             continue;
         }
 
-        // ---- Regular instruction --------------------------------
-        // Validate mnemonic exists
         if (!isa.hasMnemonic(up)) {
             addError(lineNum, "unknown mnemonic '" + pl.mnemonic + "'");
-            // Still advance LC by 4 to keep offsets consistent
             uint32_t& lc = (curSection == "text") ? textLC : dataLC;
             lc += 4;
             continue;
         }
 
-        // Validate operand count
         {
             const InstructionDef& def = isa.byMnemonic(up);
             auto fmt = InstructionFormat::create(def.fmt);
@@ -600,12 +520,7 @@ AssemblyResult Assembler::assemble(const std::string& source,
         addInstr(up, pl.tokens, lineNum, rawLine);
     }
 
-    // ================================================================
-    // Check for section overlap
-    // ================================================================
-    // Text section: [textBase, textLC)  Data section: [dataBase, dataLC)
     if (textLC > opts.textBase && dataLC > opts.dataBase) {
-        // Check if ranges overlap
         uint32_t ts = opts.textBase, te = textLC;
         uint32_t ds = opts.dataBase, de = dataLC;
         if (!(te <= ds || de <= ts))
@@ -615,20 +530,14 @@ AssemblyResult Assembler::assemble(const std::string& source,
                        + ", 0x" + [](uint32_t v){ std::ostringstream o; o << std::hex << v; return o.str(); }(de) + ")");
     }
 
-    // If pass 1 produced errors, stop here (no output)
-    // (We continue to collect as many pass-2 errors as possible)
 
     result.symbols = syms;
 
-    // ================================================================
-    // PASS 2: resolve labels, encode instructions, build output
-    // ================================================================
     std::ostringstream listStream;
     uint32_t curTextAddr = opts.textBase;
     uint32_t curDataAddr = opts.dataBase;
 
     for (auto& el : lines) {
-        // Pad with zeros if location counter was advanced by .org
         if (el.section == "text") {
             if (el.address > curTextAddr) {
                 uint32_t padWords = (el.address - curTextAddr) / 4;
@@ -645,7 +554,6 @@ AssemblyResult Assembler::assemble(const std::string& source,
             }
         }
         if (el.kind == LineKind::DATA_WORD) {
-            // Emit one 32-bit word per value
             for (const auto& v : el.dataValues) {
                 uint32_t word = 0;
                 try {
@@ -661,13 +569,12 @@ AssemblyResult Assembler::assemble(const std::string& source,
                     curDataAddr += 4;
                 }
                 listStream << listingLine(el.address, word, el.srcText) << "\n";
-                el.address += 4; // advance for listing only
+                el.address += 4; // listing only
             }
             continue;
         }
 
         if (el.kind == LineKind::DATA_SPACE) {
-            // Emit zero words
             uint32_t words = (el.spaceBytes + 3) / 4;
             for (uint32_t i = 0; i < words; ++i) {
                 if (el.section == "text") {
@@ -683,19 +590,16 @@ AssemblyResult Assembler::assemble(const std::string& source,
             continue;
         }
 
-        // ---- LI_HIGH -------------------------------------------
         if (el.kind == LineKind::LI_HIGH) {
             uint32_t val32 = 0;
             try { val32 = resolveValue32(el.liValue, syms); }
             catch (const std::exception& e) { addError(el.srcLine, std::string("li: ") + e.what()); }
             uint16_t hi16 = static_cast<uint16_t>(val32 >> 16);
-            // Encode as: mov rd, hi16h  (Format2, mode=3)
-            std::string rdStr = ISA::gprName(el.liRd, true); // raw name for encoding
+            std::string rdStr = ISA::gprName(el.liRd, true);
             const InstructionDef& def = isa.byMnemonic("MOV");
             auto fmt = InstructionFormat::create(def.fmt);
             uint32_t word = 0;
             try {
-                // Build token: "hi16h"
                 std::ostringstream tok;
                 tok << "0x" << std::uppercase << std::hex
                     << std::setfill('0') << std::setw(4) << hi16 << "h";
@@ -712,13 +616,11 @@ AssemblyResult Assembler::assemble(const std::string& source,
             continue;
         }
 
-        // ---- LI_LOW --------------------------------------------
         if (el.kind == LineKind::LI_LOW) {
             uint32_t val32 = 0;
             try { val32 = resolveValue32(el.liValue, syms); }
-            catch (...) { /* already reported in LI_HIGH */ }
+            catch (...) {  }
             uint16_t lo16 = static_cast<uint16_t>(val32 & 0xFFFF);
-            // Encode as: or rd, rd, lo16u  (Format1, mode=2)
             std::string rdStr = ISA::gprName(el.liRd, true);
             const InstructionDef& def = isa.byMnemonic("OR");
             auto fmt = InstructionFormat::create(def.fmt);
@@ -739,8 +641,6 @@ AssemblyResult Assembler::assemble(const std::string& source,
             continue;
         }
 
-        // ---- Regular INSTR -------------------------------------
-        // Get instruction definition
         const InstructionDef* defPtr = nullptr;
         try {
             defPtr = &isa.byMnemonic(el.mnemonic);
@@ -753,13 +653,10 @@ AssemblyResult Assembler::assemble(const std::string& source,
         const InstructionDef& def = *defPtr;
         auto fmt = InstructionFormat::create(def.fmt);
 
-        // Resolve operands: branches get their label converted to offset;
-        // other immediate tokens get .equ substitution.
         std::vector<std::string> resolvedTokens = el.tokens;
 
         bool isBranch = (def.fmt == FmtId::F5);
         if (isBranch) {
-            // Single operand is a label or ready-made numeric offset
             if (!el.tokens.empty()) {
                 std::string tok = trim(el.tokens[0]);
                 bool isPlainNum = false;
@@ -775,13 +672,13 @@ AssemblyResult Assembler::assemble(const std::string& source,
                 } else {
                     try {
                         uint32_t targetAddr = resolveLabel(tok, syms, el.srcLine);
-                        // Verify target is word-aligned
                         if (targetAddr % 4 != 0) {
                             addError(el.srcLine, el.mnemonic + ": branch target '"
                                      + tok + "' is not word-aligned");
                         }
                         long long targetAddress = static_cast<long long>(targetAddr);
                         long long thisInstructionAddress = static_cast<long long>(el.address);
+                        // offset is from pc+4 not from the instr itself
                         long long wordOff = (targetAddress - (thisInstructionAddress + 4)) / 4;
                         if (wordOff < -33554432LL || wordOff > 33554431LL) {
                             addError(el.srcLine, el.mnemonic + ": branch offset "
@@ -797,12 +694,10 @@ AssemblyResult Assembler::assemble(const std::string& source,
                 }
             }
         } else {
-            // Resolve .equ references in all tokens (including memory operands & signed/suffixed)
             for (auto& tok : resolvedTokens) {
                 std::string t = trim(tok);
                 if (t.empty()) continue;
 
-                // Memory operand: offset[base] or offset(base)
                 size_t openB = t.find_first_of("[(");
                 if (openB != std::string::npos) {
                     std::string offPart = trim(t.substr(0, openB));
@@ -822,7 +717,6 @@ AssemblyResult Assembler::assemble(const std::string& source,
                     continue;
                 }
 
-                // Non-memory operand
                 std::string base = t;
                 if (!base.empty() && base[0] == '#') base = base.substr(1);
                 bool neg = false;
@@ -830,14 +724,12 @@ AssemblyResult Assembler::assemble(const std::string& source,
                 else if (!base.empty() && base[0] == '+') { base = trim(base.substr(1)); }
                 if (!base.empty() && base[0] == '#') base = base.substr(1);
 
-                // Check if base itself is in syms
                 auto sit = syms.find(base);
                 if (sit != syms.end() && sit->second.isEqu) {
                     int64_t v = static_cast<int64_t>(static_cast<int32_t>(sit->second.address));
                     if (neg) v = -v;
                     tok = std::to_string(v);
                 } else if (!base.empty()) {
-                    // Check if base ends in u/h suffix attached to a .equ name (e.g., WIDTHu, HIGHPARTh)
                     char last = base.back();
                     if (last == 'u' || last == 'U' || last == 'h' || last == 'H') {
                         std::string prefix = base.substr(0, base.size() - 1);
@@ -852,7 +744,6 @@ AssemblyResult Assembler::assemble(const std::string& source,
             }
         }
 
-        // Encode
         uint32_t word = 0;
         try {
             FieldMap fm = fmt->parseOperands(resolvedTokens, el.mnemonic);
@@ -886,10 +777,6 @@ AssemblyResult Assembler::assemble(const std::string& source,
     return result;
 }
 
-// ============================================================
-// listingLine — format one listing line
-//   "00000000  05120005    add r1, r2, 5"
-// ============================================================
 std::string Assembler::listingLine(uint32_t addr, uint32_t word,
                                    const std::string& src) const {
     std::ostringstream oss;

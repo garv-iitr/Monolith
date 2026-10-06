@@ -1,19 +1,6 @@
 #ifndef RISC201_CU_MICRO_CONTROL_UNIT_H
 #define RISC201_CU_MICRO_CONTROL_UNIT_H
 
-// ============================================================================
-// The micro-control unit (Sarangi, sec. 9.8), shared by both encodings.
-//
-//   MicroWord -- the control-memory word (horizontal or vertical)
-//   Codec     -- how to materialise a control word into signals:
-//                  horizontal: wire-through
-//                  vertical  : run the micro-decoder
-//
-// Each step: fetch the word at microPC, materialise its signals, drive the
-// datapath for one micro-cycle, then advance the microPC.  The opcode for
-// mswitch is read from the ir register, exactly as in fig. 9.22.
-// ============================================================================
-
 #include <cstdint>
 #include <utility>
 
@@ -48,7 +35,6 @@ class MicroControlUnit {
     dp.regs.micro_pc = 0;
   }
 
-  // Execute a single micro-cycle.  Returns false once the machine has halted.
   bool step() {
     if (dp.halted) return false;
 
@@ -76,6 +62,7 @@ class MicroControlUnit {
     }
 
     seq.advance(last_.sig, dp.bus.is_m_branch, switch_target);
+    // mirror sequencer pc into regs, the tracer reads it
     dp.regs.micro_pc = seq.micro_pc;
     return !dp.halted;
   }
@@ -92,6 +79,6 @@ class MicroControlUnit {
   DecodedMicro last_{};
 };
 
-}  // namespace risc201::cu
+}
 
-#endif  // RISC201_CU_MICRO_CONTROL_UNIT_H
+#endif

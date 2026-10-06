@@ -1,28 +1,6 @@
 #ifndef RISC201_CU_DATAPATH_H
 #define RISC201_CU_DATAPATH_H
 
-// ============================================================================
-// The microprogrammed datapath + execute unit (Sarangi, sec. 9.5 - 9.7).
-//
-// One call to execute() realises a single micro-cycle:
-//   1. the instruction-fetch path may load ir (mloadIR);
-//   2. the decode unit continuously drives the field registers from ir;
-//   3. the register named by write_src drives the write bus;
-//   4. the micro-adder and the transfer multiplexer place either the write
-//      bus, muimm or the adder output on the read bus;
-//   5. every register whose bit is set in read_mask latches the read bus;
-//   6. the functional units consume the latched inputs and update their state.
-//
-// Latched inputs are visible to the units in the *same* cycle, which is what
-// lets the microcode fuse a register transfer with a functional-unit op
-// (e.g. "mmov B, regVal, <add>").
-//
-// Units owned by this module: decode, register file, data memory.  The ALU,
-// FPU and memory-check args are emitted on the bus as a contract for
-// Atharva's and Paraas's units, which latch their results from the shared
-// internal registers at integration time.
-// ============================================================================
-
 #include <cstddef>
 
 #include "common/control_signals.h"
@@ -59,6 +37,6 @@ class Datapath {
   StageClass last_stage = StageClass::FETCH;
 };
 
-}  // namespace risc201::cu
+}
 
-#endif  // RISC201_CU_DATAPATH_H
+#endif

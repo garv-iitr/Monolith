@@ -15,7 +15,7 @@ Word enc_imm(Opcode op, int rd, int rs1, int imm) {
 
 Word enc_halt() { return static_cast<Word>(Opcode::HALT) << 26; }
 
-}  // namespace
+}
 
 RISC201_TEST(debugger_step_advances_one_instruction) {
   risc201::Debugger dbg;

@@ -1,16 +1,6 @@
 #ifndef RISC201_CU_CONTROL_MEMORY_H
 #define RISC201_CU_CONTROL_MEMORY_H
 
-// ============================================================================
-// Control memory: the microprogram ROM plus the opcode -> microcode entry
-// point dispatch table.  Sarangi sizes this at 1024 microinstructions with a
-// 10-bit microPC; the RISC201 ISA uses a 6-bit opcode, so the dispatch table
-// covers 64 entries.
-//
-// The template is parameterised on the microinstruction word so the same ROM
-// type backs both the horizontal and the vertical control unit.
-// ============================================================================
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -61,6 +51,6 @@ class ControlMemory {
   std::size_t used_ = 0;
 };
 
-}  // namespace risc201::cu
+}
 
-#endif  // RISC201_CU_CONTROL_MEMORY_H
+#endif

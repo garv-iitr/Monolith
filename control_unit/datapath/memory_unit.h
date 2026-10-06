@@ -1,15 +1,6 @@
 #ifndef RISC201_CU_MEMORY_UNIT_H
 #define RISC201_CU_MEMORY_UNIT_H
 
-// ============================================================================
-// Memory unit (Sarangi, sec. 9.5.5).
-//
-// Byte-addressed, word-granular data memory.  mar buffers the address, mdr the
-// value to store, and a load deposits the data in ldResult one cycle later.
-// The instruction fetch uses the same array through `fetch` (combinational),
-// which lets mloadIR complete in a single micro-cycle as the book assumes.
-// ============================================================================
-
 #include <cstddef>
 #include <vector>
 
@@ -28,8 +19,7 @@ class MemoryUnit {
   void reset();
   std::size_t words() const { return data_.size(); }
 
-  // Alignment + bounds: an address is "present" iff it is word-aligned and
-  // inside the array.  This is exactly what the memory-check unit tests.
+  // present means word-aligned and inside the array
   bool present(Word byte_addr) const;
 
   Word read_word(Word byte_addr) const;
@@ -44,6 +34,6 @@ class MemoryUnit {
   std::vector<Word> data_;
 };
 
-}  // namespace risc201::cu
+}
 
-#endif  // RISC201_CU_MEMORY_UNIT_H
+#endif

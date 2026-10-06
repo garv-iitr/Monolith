@@ -29,33 +29,43 @@ class Debugger {
 
   void reset() {
     cpu_.reset();
+    micro_steps_ = 0;
+    micro_ops_this_instruction_ = 0;
+    at_boundary_ = true;
     refresh();
   }
 
-  // Advance one ISA instruction (a full fetch + routine). Returns false once
-  // the machine has halted or faulted.
+  // run one whole instruction (a fetch plus its microroutine)
   bool step_instruction() {
     if (cpu_.halted()) return false;
+    std::size_t n = 0;
     do {
       if (!cpu_.step()) break;
+      ++n;
     } while (cpu_.micro_pc() != 0);
+    micro_ops_this_instruction_ = n;
+    micro_steps_ = 0;
+    at_boundary_ = true;
     refresh();
     return !cpu_.halted();
   }
 
-  // Advance a single micro-cycle.
   bool step_micro() {
     const bool alive = cpu_.step();
+    ++micro_steps_;
+    at_boundary_ = (cpu_.micro_pc() == 0);
+    if (at_boundary_) {
+      micro_ops_this_instruction_ = micro_steps_;
+      micro_steps_ = 0;
+    }
     refresh();
     return alive;
   }
 
-  // Run to completion (halt or fault), ignoring breakpoints.
   void run() {
     while (step_instruction()) {}
   }
 
-  // Run until a breakpoint is reached or the machine halts/faults.
   void run_to_breakpoint() {
     while (!cpu_.halted() && !at_breakpoint()) step_instruction();
   }
@@ -70,7 +80,11 @@ class Debugger {
   void unwatch(std::uint8_t reg) { watched_.erase(reg); }
   const std::map<std::uint8_t, Word>& watched() const { return watched_; }
 
-  // Registers whose value changed since they were last watched / reported.
+  // micro step counters for the mi command
+  std::size_t micro_steps() const { return micro_steps_; }
+  std::size_t micro_ops_last_instruction() const { return micro_ops_this_instruction_; }
+  bool at_instruction_boundary() const { return at_boundary_; }
+
   std::vector<std::uint8_t> changed_registers() {
     std::vector<std::uint8_t> changed;
     for (auto& [reg, baseline] : watched_) {
@@ -90,6 +104,9 @@ class Debugger {
   StateView view_;
   std::set<Word> breakpoints_;
   std::map<std::uint8_t, Word> watched_;
+  std::size_t micro_steps_ = 0;
+  std::size_t micro_ops_this_instruction_ = 0;
+  bool at_boundary_ = true;
 };
 
 }  // namespace risc201

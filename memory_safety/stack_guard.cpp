@@ -17,6 +17,7 @@ bool StackGuard::frame_ok(Word sp, Word size) const {
 
 bool StackGuard::addr_ok(Word addr, Word size, bool is_write) const {
   (void)is_write;
+  // first page left out, catches null-ish derefs
   if (addr < 0x1000) return false;
   if (addr + size > kMemSize) return false;
   return true;
@@ -47,5 +48,5 @@ bool StackGuard::addr_ok(Word addr, Word size, bool is_write) const {
   return e;
 }
 
-}  // namespace safety
-}  // namespace risc201
+}
+}

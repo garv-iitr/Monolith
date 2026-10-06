@@ -9,14 +9,11 @@
 namespace risc201 {
 namespace safety {
 
-// Renders the stack region of memory as ASCII for debugging.
-// Decoupled from Datapath / MemoryUnit so it can be tested standalone.
 class StackVisualizer {
  public:
   StackVisualizer(Word base, Word limit);
 
-  // memory is a vector of Words indexed by WORD INDEX (memory[0] = word 0).
-  // sp and fp are WORD INDICES as well.
+  // memory, sp and fp are word indices, not byte addresses
   std::string render(const std::vector<Word>& memory,
                      Word sp,
                      Word fp = 0,
@@ -34,5 +31,5 @@ class StackVisualizer {
   Word limit_;
 };
 
-}  // namespace safety
-}  // namespace risc201
+}
+}

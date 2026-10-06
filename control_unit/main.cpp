@@ -1,24 +1,3 @@
-// ============================================================================
-// Control-unit demonstration / self-test.
-//
-// Two layers of checks:
-//
-//   1. Coverage -- every RISC201 opcode has a microcode routine and an entry
-//      point in both the horizontal and the vertical control memory.
-//
-//   2. Execution -- programs that exercise everything this module owns:
-//      the shared bus, the decode unit, the register file, the data memory
-//      and the micro-sequencer: immediate/register moves, unconditional and
-//      flag-driven branches, full-descending call/ret, and the illegal-
-//      instruction halt path.  The ALU, FPU and memory-check units are owned
-//      by Atharva and Paraas; this module only emits their args on the bus.
-//
-// Every execution program runs under all four configurations
-//   {4-stage, 6-stage} x {horizontal, vertical}
-// and the four configurations must produce identical architectural state;
-// the demo exits non-zero otherwise.
-// ============================================================================
-
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -43,7 +22,6 @@ const std::array<Opcode, kOpcodeCount> kAllOpcodes = {
     Opcode::CALL, Opcode::RET, Opcode::HALT,
 };
 
-// --- Instruction encoders (ISA.md formats) ----------------------------------
 Word enc_imm(Opcode op, int rd, int rs1, int imm) {
   return (static_cast<Word>(op) << 26) | (1u << 24) |
          (static_cast<Word>(rd & 0xF) << 20) | (static_cast<Word>(rs1 & 0xF) << 16) |
@@ -63,80 +41,72 @@ Word enc_raw(std::uint8_t opcode) { return static_cast<Word>(opcode) << 26; }
 struct Program_ {
   const char* name;
   std::vector<Word> code;
-  std::vector<std::pair<Word, Word>> data = {};                   // byte addr -> value
-  std::vector<std::pair<std::uint8_t, Word>> pre_seed = {};        // GPRs set before the run
-  std::vector<std::pair<std::uint8_t, Word>> expected_regs = {};   // GPRs checked after
-  std::uint32_t probe_addr = 0;                               // memory word to report
+  std::vector<std::pair<Word, Word>> data = {};
+  std::vector<std::pair<std::uint8_t, Word>> pre_seed = {};
+  std::vector<std::pair<std::uint8_t, Word>> expected_regs = {};
+  std::uint32_t probe_addr = 0;
   Word expected_probe = 0;
-  bool seed_flags = false;                                    // pre-set Z/N before the run
+  bool seed_flags = false;
   bool seed_z = false;
   bool seed_n = false;
-  const char* expected_reason = nullptr;  // expected halt reason (null = normal halt)
+  const char* expected_reason = nullptr;
 };
 
-// mov (imm + reg forms) / nop / halt -- shared bus, decode, register file.
 Program_ prog_transfer() {
   return {"mov/nop",
           {
-              enc_imm(Opcode::MOV, 1, 0, 5),        // 0:  mov r1, #5
-              enc_reg(Opcode::MOV, 2, 0, 1),        // 4:  mov r2, r1
-              enc_imm(Opcode::MOV, 3, 0, 0x1234),   // 8:  mov r3, #0x1234
-              enc_zero(Opcode::NOP),                // 12: nop
-              enc_halt(),                           // 16: halt
+              enc_imm(Opcode::MOV, 1, 0, 5),
+              enc_reg(Opcode::MOV, 2, 0, 1),
+              enc_imm(Opcode::MOV, 3, 0, 0x1234),
+              enc_zero(Opcode::NOP),
+              enc_halt(),
           },
           {},
           {},
           {{1, 5}, {2, 5}, {3, 0x1234}}};
 }
 
-// call/ret -- full-descending stack through the memory unit.
-// Branch targets are PC-relative to the *next* PC: target = (addr+4) + offset*4.
+// branch targets are relative to the next pc: (addr+4) + offset*4
 Program_ prog_call() {
   return {"call/ret",
           {
-              enc_imm(Opcode::MOV, REG_SP, 0, 0x300),  // 0:  mov sp, #0x300
-              enc_imm(Opcode::MOV, 1, 0, 7),           // 4:  mov r1, #7
-              enc_branch(Opcode::CALL, 3),             // 8:  call +3 (-> 24)
-              enc_halt(),                              // 12: halt
-              enc_zero(Opcode::NOP),                   // 16: (padding)
-              enc_zero(Opcode::NOP),                   // 20: (padding)
-              enc_zero(Opcode::RET),                   // 24: ret
+              enc_imm(Opcode::MOV, REG_SP, 0, 0x300),
+              enc_imm(Opcode::MOV, 1, 0, 7),
+              enc_branch(Opcode::CALL, 3),
+              enc_halt(),
+              enc_zero(Opcode::NOP),
+              enc_zero(Opcode::NOP),
+              enc_zero(Opcode::RET),
           },
           {},
           {},
           {{1, 7}, {REG_SP, 0x300}},
           0x2FC,
-          12};  // the return address pushed by the call (PC after its preamble)
+          12};  // return addr the call pushed
 }
 
-// beq/bne/bgt/blt with pre-seeded Z=0, N=0 (so GT=1):
-//   target = (addr+4) + offset*4
-//   0:  beq +4  -> 20, not taken
-//   4:  bne +3  -> 20, taken
-//   20: bgt +1  -> 28, taken
-//   28: blt +0  -> 32, not taken
+// flags are pre-seeded Z=0 N=0 so GT=1, the branch list below assumes that
 Program_ prog_branch() {
   Program_ p{"branches (beq/bne/bgt/blt)",
              {
-                 enc_branch(Opcode::BEQ, 4),   // 0:  (-> 20, not taken)
-                 enc_branch(Opcode::BNE, 3),   // 4:  (-> 20, taken)
-                 enc_branch(Opcode::BGT, 2),   // 8:  (skipped)
-                 enc_branch(Opcode::BLT, 2),   // 12: (skipped)
-                 enc_branch(Opcode::B, -4),    // 16: (skipped -- trap)
-                 enc_branch(Opcode::BGT, 1),   // 20: (-> 28, taken)
-                 enc_branch(Opcode::B, -6),    // 24: (skipped -- trap)
-                 enc_branch(Opcode::BLT, 0),   // 28: (-> 32, not taken)
-                 enc_halt(),                   // 32: halt
+                 enc_branch(Opcode::BEQ, 4),
+                 enc_branch(Opcode::BNE, 3),
+                 enc_branch(Opcode::BGT, 2),
+                 enc_branch(Opcode::BLT, 2),
+                 enc_branch(Opcode::B, -4),
+                 enc_branch(Opcode::BGT, 1),
+                 enc_branch(Opcode::B, -6),
+                 enc_branch(Opcode::BLT, 0),
+                 enc_halt(),
              }};
   p.pre_seed = {{5, 0xDEAD}};
-  p.expected_regs = {{5, 0xDEAD}};  // branches must not clobber GPRs
+  p.expected_regs = {{5, 0xDEAD}};
   p.seed_flags = true;
   p.seed_z = false;
   p.seed_n = false;
   return p;
 }
 
-// An undefined opcode must halt through the dispatch table's missing entry.
 Program_ prog_illegal() {
   Program_ p{"illegal opcode", {enc_raw(0x3F)}};
   p.expected_reason = "illegal instruction";
@@ -152,7 +122,6 @@ struct Snapshot {
   int cycles = 0;
 };
 
-// --- Trace helpers -----------------------------------------------------------
 const char* transfer_name(TransferSel s) {
   switch (s) {
     case TransferSel::WRITE_BUS: return "write_bus";
@@ -194,7 +163,6 @@ void print_reads(std::uint32_t mask) {
   if (first) std::printf("-");
 }
 
-// --- ROM builders, selected by control-unit type ----------------------------
 template <typename CU> struct RomBuilder;
 template <> struct RomBuilder<HorizontalControlUnit> {
   static ControlMemory<HorizontalMicroWord> build(const Program& p) { return assemble_horizontal(p); }
@@ -289,7 +257,6 @@ bool same(const Snapshot& a, const Snapshot& b) {
   return true;
 }
 
-// --- Coverage: every opcode must have a routine and a dispatch entry --------
 int check_coverage() {
   std::printf("\n--- microcode coverage: all %d opcodes ---\n", kOpcodeCount);
   const Program p = build_program(StageLayout::SIX_STAGE);
@@ -314,7 +281,7 @@ int check_coverage() {
   return bad;
 }
 
-}  // namespace
+}
 
 int main() {
   std::printf("RISC201 microprogrammed control unit\n");
@@ -335,7 +302,6 @@ int main() {
 
   for (std::size_t i = 0; i < programs.size(); ++i) {
     const Program_& p = programs[i];
-    // Only the first program is traced.
     const Snapshot hs6 = execute<HorizontalControlUnit>(StageLayout::SIX_STAGE, p, i == 0);
     const Snapshot vs6 = execute<VerticalControlUnit>(StageLayout::SIX_STAGE, p, false);
     const Snapshot hs4 = execute<HorizontalControlUnit>(StageLayout::FOUR_STAGE, p, false);

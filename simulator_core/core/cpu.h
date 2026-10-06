@@ -7,6 +7,7 @@
 
 #include "control_unit.h"
 #include "isa_spec/isa.h"
+#include "microcode/routine_layout.h"
 #include "simulator_core/core/alu_unit.h"
 #include "simulator_core/core/exception.h"
 #include "simulator_core/core/state_view.h"
@@ -21,6 +22,7 @@ class Cpu {
                risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE)
       : dp_(mem_words), cu_(dp_, layout), alu_(std::make_unique<HardwareAlu>()) {
     cu_.install(risc201::cu::assemble_horizontal(risc201::cu::build_program()));
+    micro_layout_ = risc201::cu::layout_program(risc201::cu::build_program());
   }
 
   void load(const std::vector<Word>& code) { dp_.mem.load_words(0, code); }
@@ -73,6 +75,24 @@ class Cpu {
   Word pc() const { return dp_.regs.pc; }
   Word ir() const { return dp_.regs.ir; }
 
+  // where each opcodes microroutine sits in control memory
+  std::uint16_t micro_routine_start(std::uint8_t opcode) const {
+    return micro_layout_.entry_of(static_cast<Opcode>(opcode));
+  }
+  std::uint16_t micro_routine_end(std::uint8_t opcode) const {
+    const std::uint16_t start = micro_routine_start(opcode);
+    std::uint16_t end = static_cast<std::uint16_t>(micro_layout_.stmts.size());
+    for (const auto& e : micro_layout_.entries)
+      if (e.second > start && e.second < end) end = e.second;
+    return end;
+  }
+  std::uint16_t micro_preamble_len() const {
+    std::uint16_t first = static_cast<std::uint16_t>(micro_layout_.stmts.size());
+    for (const auto& e : micro_layout_.entries)
+      if (e.second < first) first = e.second;
+    return first;
+  }
+
   StateView snapshot() const {
     StateView v;
     v.pc = dp_.regs.pc;
@@ -85,6 +105,7 @@ class Cpu {
     v.halt_reason = dp_.halt_reason;
     v.fault_code = fault_code_;
     v.fault_address = fault_address_;
+    v.micro = dp_.regs;
     return v;
   }
 
@@ -92,6 +113,7 @@ class Cpu {
   risc201::cu::Datapath dp_;
   ControlUnit cu_;
   std::unique_ptr<AluUnit> alu_;
+  risc201::cu::MicroProgramLayout micro_layout_;
   ExceptionCode fault_code_ = ExceptionCode::NONE;
   std::uint64_t fault_address_ = 0;
 };
