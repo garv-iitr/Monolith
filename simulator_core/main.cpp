@@ -148,11 +148,33 @@ void print_help() {
 
 }  // namespace
 
-int main() {
-  risc201::Debugger dbg(kMemWords);
+int main(int argc, char** argv) {
+  risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE;
+  bool vertical = false;
+  for (int i = 1; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "--stages" && i + 1 < argc) {
+      const std::string v = argv[++i];
+      if (v == "4") layout = risc201::cu::StageLayout::FOUR_STAGE;
+      else if (v == "6") layout = risc201::cu::StageLayout::SIX_STAGE;
+      else { std::printf("--stages must be 4 or 6\n"); return 1; }
+    } else if (arg == "--encoding" && i + 1 < argc) {
+      const std::string v = argv[++i];
+      if (v == "horizontal" || v == "h") vertical = false;
+      else if (v == "vertical" || v == "v") vertical = true;
+      else { std::printf("--encoding must be horizontal or vertical\n"); return 1; }
+    } else {
+      std::printf("usage: risc201-sim [--stages 4|6] [--encoding horizontal|vertical]\n");
+      return 1;
+    }
+  }
+
+  risc201::Debugger dbg(kMemWords, layout, vertical);
   dbg.load(demo_program());
 
-  std::printf("RISC201 debugger. Type 'help' for commands.\n");
+  std::printf("RISC201 debugger (%s, %s). Type 'help' for commands.\n",
+              vertical ? "vertical" : "horizontal",
+              layout == risc201::cu::StageLayout::FOUR_STAGE ? "4-stage" : "6-stage");
   print_registers(dbg);
 
   std::string line;
