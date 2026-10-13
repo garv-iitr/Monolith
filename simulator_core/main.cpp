@@ -50,6 +50,21 @@ bool parse_word(const std::string& s, Word& out) {
   }
 }
 
+bool parse_bounded_integer(const std::string& text, int min_value,
+                           int max_value, int& out) {
+  try {
+    std::size_t parsed = 0;
+    const int value = std::stoi(text, &parsed, 10);
+    if (parsed != text.size() || value < min_value || value > max_value) {
+      return false;
+    }
+    out = value;
+    return true;
+  } catch (const std::exception&) {
+    return false;
+  }
+}
+
 bool load_hex_file(const std::string& path, std::vector<Word>& out) {
   std::ifstream in(path);
   if (!in) return false;
@@ -139,6 +154,8 @@ void print_help() {
       "  unwatch <reg>         stop watching a register\n"
       "  regs                  dump registers and flags\n"
       "  mem [addr] [count]    dump memory words\n"
+      "  stack [window]        show stack words, SP and call-frame boundaries\n"
+      "  stack trace [steps] [window]  render stack after each instruction with diffs\n"
       "  load <text> [data]    load hex program (text at 0x0, data at 0x10000)\n"
       "  demo                  reload the built-in demo program\n"
       "  reset                 reset the machine\n"
@@ -263,6 +280,61 @@ int main(int argc, char** argv) {
         } catch (const RuntimeException&) {
           std::printf("  0x%X: <out of range>\n", static_cast<unsigned>(byte));
           break;
+        }
+      }
+    } else if (cmd == "stack" || cmd == "stackviz") {
+      std::string mode;
+      iss >> mode;
+      if (mode == "trace") {
+        int max_steps = 64;
+        int window = 8;
+        std::string steps_arg, window_arg, extra;
+        bool valid_args = true;
+        if (iss >> steps_arg) {
+          valid_args =
+              parse_bounded_integer(steps_arg, 1, 1000, max_steps);
+        }
+        if (valid_args && (iss >> window_arg)) {
+          valid_args = parse_bounded_integer(window_arg, 1, 64, window);
+        }
+        if (iss >> extra) valid_args = false;
+        if (!valid_args) {
+          std::printf("  usage: stack trace [steps 1..1000] [window 1..64]\n");
+        } else {
+          int traced = 0;
+          while (!dbg.cpu().halted() && traced < max_steps) {
+            const Word before_pc = dbg.cpu().pc();
+            const Word before_sp = dbg.cpu().stack_pointer_word();
+            const std::vector<Word> before_stack =
+                dbg.cpu().stack_memory_snapshot();
+            dbg.step_instruction();
+            std::printf("[STACK TRACE] instruction at 0x%X -> PC 0x%X\n",
+                        static_cast<unsigned>(before_pc),
+                        static_cast<unsigned>(dbg.cpu().pc()));
+            std::printf("%s",
+                        dbg.cpu()
+                            .render_stack_diff(before_stack, before_sp)
+                            .c_str());
+            std::printf("%s", dbg.render_stack(window).c_str());
+            ++traced;
+          }
+          if (traced == max_steps && !dbg.cpu().halted()) {
+            std::printf("  trace stopped at %d instruction(s); CPU remains "
+                        "runnable\n",
+                        traced);
+          }
+          print_registers(dbg);
+        }
+      } else {
+        int window = 8;
+        std::string extra;
+        const bool valid_window =
+            mode.empty() || parse_bounded_integer(mode, 1, 64, window);
+        if (!valid_window || (iss >> extra)) {
+          std::printf("  usage: stack [window 1..64] | stack trace [steps] "
+                      "[window]\n");
+        } else {
+          std::printf("%s", dbg.render_stack(window).c_str());
         }
       }
     } else if (cmd == "load") {
