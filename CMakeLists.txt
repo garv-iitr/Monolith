@@ -108,3 +108,9 @@ add_executable(memory-unit-test
 target_link_libraries(memory-unit-test PRIVATE risc201_cu risc201_safety)
 target_compile_options(memory-unit-test PRIVATE -Wall -Wextra)
 add_test(NAME memory-unit-test COMMAND memory-unit-test)
+
+add_executable(stack-visualizer-test
+  tests/test_visualizer.cpp)
+target_link_libraries(stack-visualizer-test PRIVATE risc201_safety)
+target_compile_options(stack-visualizer-test PRIVATE -Wall -Wextra)
+add_test(NAME stack-visualizer-test COMMAND stack-visualizer-test)

@@ -27,7 +27,7 @@ int main() {
   std::printf("%s\n", viz.render(mem, sp, fp, 8).c_str());
 
   std::printf("=== Diff ===\n");
-  std::printf("%s\n", viz.render_diff(before, mem, sp).c_str());
+  std::printf("%s\n", viz.render_diff(before, mem, 32, sp).c_str());
 
   return 0;
 }
