@@ -29,7 +29,7 @@ add_library(risc201_cu STATIC
   "control_unit/microcode/h_assembler.cpp"
   "control_unit/microcode/v_assembler.cpp"
   "control_unit/vertical/v_decoder.cpp")
-target_link_libraries(risc201_cu PUBLIC risc201_config)
+target_link_libraries(risc201_cu PUBLIC risc201_config risc201_safety)
 target_compile_options(risc201_cu PRIVATE -Wall -Wextra)
 
 add_library(risc201_alu STATIC
@@ -102,3 +102,9 @@ target_compile_options(stack-visualizer-demo PRIVATE -Wall -Wextra)
 enable_testing()
 add_test(NAME risc201-tests COMMAND risc201-tests)
 add_test(NAME stack-guard-test COMMAND stack-guard-test)
+
+add_executable(memory-unit-test
+  tests/test_memory_unit.cpp)
+target_link_libraries(memory-unit-test PRIVATE risc201_cu risc201_safety)
+target_compile_options(memory-unit-test PRIVATE -Wall -Wextra)
+add_test(NAME memory-unit-test COMMAND memory-unit-test)
