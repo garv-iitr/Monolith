@@ -6,38 +6,32 @@
 CXX      = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2
 
-# Common object files (linked into both executables)
+# Common object files for disassembler
 COMMON_SRCS = isa.cpp formats.cpp macros.cpp
 COMMON_OBJS = $(COMMON_SRCS:.cpp=.o)
-
-ASM_SRCS  = assembler.cpp main_asm.cpp
-ASM_OBJS  = $(ASM_SRCS:.cpp=.o)
 
 DIS_SRCS  = disassembler.cpp main_dis.cpp
 DIS_OBJS  = $(DIS_SRCS:.cpp=.o)
 
 .PHONY: all clean
 
-all: risc201asm risc201dis
+all: asm risc201asm dis risc201dis
 
-risc201asm: $(COMMON_OBJS) $(ASM_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^
+# Single-file standalone assembler (replaces multi-file assembler)
+asm: asm.cpp
+	$(CXX) $(CXXFLAGS) -o $@ $<
 
-risc201dis: $(COMMON_OBJS) $(DIS_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^
+risc201asm: asm
+	cp asm risc201asm
+	cp asm risc201-asm
 
-# Pattern rule for .o files
-%.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
+# Single-file standalone disassembler (replaces multi-file disassembler)
+dis: dis.cpp
+	$(CXX) $(CXXFLAGS) -o $@ $<
 
-# Header dependencies
-isa.o:          isa.cpp isa.hpp
-formats.o:      formats.cpp formats.hpp isa.hpp
-macros.o:       macros.cpp macros.hpp isa.hpp
-assembler.o:    assembler.cpp assembler.hpp formats.hpp macros.hpp isa.hpp
-disassembler.o: disassembler.cpp disassembler.hpp formats.hpp isa.hpp
-main_asm.o:     main_asm.cpp assembler.hpp isa.hpp
-main_dis.o:     main_dis.cpp disassembler.hpp isa.hpp
+risc201dis: dis
+	cp dis risc201dis
+	cp dis risc201-disasm
 
 clean:
-	rm -f *.o risc201asm risc201dis
+	rm -f *.o risc201asm risc201dis risc201-asm risc201-disasm asm dis
