@@ -10,6 +10,7 @@
 #include "datapath/memory_unit.h"
 #include "datapath/register_file_unit.h"
 #include "isa_spec/isa.h"
+#include "memory_safety/stack_guard.h"
 
 namespace risc201::cu {
 
@@ -21,12 +22,14 @@ class Datapath {
   DecodeUnit decode;
   RegisterFileUnit rf;
   MemoryUnit mem;
+  risc201::safety::StackGuard stack_guard;
 
   StageLayout layout = StageLayout::SIX_STAGE;
   bool halted = false;
   const char* halt_reason = "";
 
-  explicit Datapath(std::size_t mem_words = MemoryUnit::kDefaultWords);
+  explicit Datapath(std::size_t mem_words = MemoryUnit::kDefaultWords,
+                    bool runtime_safety = false);
 
   void reset();
   void execute(const ControlSignals& sig, Word muimm);
@@ -35,6 +38,7 @@ class Datapath {
 
  private:
   StageClass last_stage = StageClass::FETCH;
+  bool runtime_safety_ = false;
 };
 
 }

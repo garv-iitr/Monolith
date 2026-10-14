@@ -3,21 +3,35 @@
 #include <cstdint>
 
 #include "isa_spec/isa.h"
+#include "memory_safety/memory_map.h"
 #include "simulator_core/core/exception.h"
 
 namespace risc201 {
 namespace safety {
 
-// stack grows down, sp points at the top word
+// Stack grows DOWN from the exclusive STACK_BASE toward STACK_LIMIT.
+// SP (R14) is the next free byte address; a push stores at SP - 4.
+//
+//   valid empty SP : STACK_BASE (one-past-end; never dereferenced)
+//   push OK        : aligned STACK_LIMIT < sp <= STACK_BASE
+//   pop  OK        : aligned STACK_LIMIT <= sp < STACK_BASE
+//
+// Uses ::ExceptionCode from simulator_core/core/exception.h.
+// Does NOT define its own error codes.
 
 class StackGuard {
  public:
-  static constexpr Word kMemSize    = 64 * 1024;
-  static constexpr Word kStackBase  = kMemSize;
-  static constexpr Word kStackLimit = kMemSize - 4096;
+  static constexpr Word kMemSize =
+      static_cast<Word>(MemoryMap::kAddressSpaceBytes);
+  static constexpr Word kDataBase =
+      static_cast<Word>(MemoryMap::kReservedLowEnd);
+  static constexpr Word kStackBase =
+      static_cast<Word>(MemoryMap::kStackTop);
+  static constexpr Word kStackLimit =
+      static_cast<Word>(MemoryMap::kStackLimit);
 
   StackGuard() = default;
-  StackGuard(Word base, Word limit) : base_(base), limit_(limit) {}
+  StackGuard(Word base, Word limit);
 
   bool push_ok(Word sp) const;
   bool pop_ok(Word sp) const;

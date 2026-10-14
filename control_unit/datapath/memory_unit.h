@@ -7,17 +7,20 @@
 #include "common/control_signals.h"
 #include "common/internal_registers.h"
 #include "isa_spec/isa.h"
+#include "memory_safety/memory_map.h"
 
 namespace risc201::cu {
 
 class MemoryUnit {
  public:
-  static constexpr std::size_t kDefaultWords = 4096;
+  static constexpr std::size_t kDefaultWords =
+      risc201::safety::MemoryMap::kAddressSpaceWords;
 
   explicit MemoryUnit(std::size_t words = kDefaultWords);
 
   void reset();
   std::size_t words() const { return data_.size(); }
+  std::vector<Word> snapshot() const { return data_; }
 
   // present means word-aligned and inside the array
   bool present(Word byte_addr) const;

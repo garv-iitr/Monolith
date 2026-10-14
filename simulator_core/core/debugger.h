@@ -12,12 +12,15 @@ namespace risc201 {
 // interactive debugger on top of the cpu
 class Debugger {
  public:
-  explicit Debugger(std::size_t mem_words = 1024,
+  explicit Debugger(std::size_t mem_words = risc201::cu::MemoryUnit::kDefaultWords,
                     risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE,
                     bool vertical = false)
       : cpu_(mem_words, layout, vertical) {}
 
   const Cpu& cpu() const { return cpu_; }
+  std::string render_stack(int window = 8) const {
+    return cpu_.render_stack(window);
+  }
   const StateView& view() const { return view_; }
 
   void load(const std::vector<Word>& code) {
