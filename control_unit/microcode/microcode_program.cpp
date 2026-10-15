@@ -1,3 +1,4 @@
+// Major use: Implements microcode routines for integer ALU, memory, branch, stack, and floating-point instructions.
 #include "microcode/microcode_program.h"
 
 namespace risc201::cu {
@@ -7,23 +8,26 @@ using namespace micro;
 using IR = InternalReg;
 using SC = StageClass;
 
+// Local symbolic jump labels within microcode routines
 enum { L_IMM = 0, L_RW = 1, L_BRANCH = 2 };
 
+// 3-operand integer ALU routine: reads RS1, evaluates I-bit, reads RS2 or IMMX, triggers ALU, and writes RD
 Routine alu3(AluOp op) {
   return {
-      mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),
-      mmov(IR::A, IR::REG_VAL),
-      mbeq(IR::I, 1, L_IMM),
-      mmov(IR::REG_SRC, IR::RS2, a_reg(RegOp::READ)),
-      mmov(IR::B, IR::REG_VAL, a_alu(op)),
-      mb(L_RW),
-      mlabel(L_IMM, mmov(IR::B, IR::IMMX, a_alu(op))),
-      mlabel(L_RW, mmov(IR::REG_SRC, IR::RD)),
-      mmov(IR::REG_DATA, IR::ALU_RESULT, a_reg(RegOp::WRITE), SC::WRITEBACK),
-      mb(kPreamble),
+      mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),       // 1. Read rs1 from register file into reg_val
+      mmov(IR::A, IR::REG_VAL),                             // 2. Latch reg_val into ALU input A
+      mbeq(IR::I, 1, L_IMM),                                // 3. If immediate mode flag is set, branch to L_IMM
+      mmov(IR::REG_SRC, IR::RS2, a_reg(RegOp::READ)),       // 4. Register mode: Read rs2 from register file
+      mmov(IR::B, IR::REG_VAL, a_alu(op)),                  // 5. Latch rs2 into ALU input B and trigger ALU op
+      mb(L_RW),                                             // 6. Jump to writeback phase
+      mlabel(L_IMM, mmov(IR::B, IR::IMMX, a_alu(op))),      // 7. Immediate mode: Latch expanded immx into B and trigger ALU
+      mlabel(L_RW, mmov(IR::REG_SRC, IR::RD)),              // 8. Select rd as register file write destination
+      mmov(IR::REG_DATA, IR::ALU_RESULT, a_reg(RegOp::WRITE), SC::WRITEBACK), // 9. Write ALU result into rd
+      mb(kPreamble),                                        // 10. Return to instruction fetch preamble
   };
 }
 
+// 2-operand bitwise NOT routine: inverts RS2 or immediate and commits result to RD
 Routine not_routine() {
   return {
       mbeq(IR::I, 1, L_IMM),
@@ -37,6 +41,7 @@ Routine not_routine() {
   };
 }
 
+// Register/immediate move routine: passes RS2 or immediate through ALU pass-through B into RD
 Routine mov_routine() {
   return {
       mbeq(IR::I, 1, L_IMM),
@@ -50,6 +55,7 @@ Routine mov_routine() {
   };
 }
 
+// Integer comparison routine: calculates (RS1 - operand2), setting CPU flags without register writeback
 Routine cmp_routine() {
   return {
       mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),
@@ -63,12 +69,14 @@ Routine cmp_routine() {
   };
 }
 
+// Word load routine (LD): calculates effective address (RS1 + immx), checks safety, reads memory, writes RD
 Routine ld_routine(StageLayout layout) {
   Routine r = {
       mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),
       mmov(IR::A, IR::REG_VAL),
       mmov(IR::B, IR::IMMX, a_alu(AluOp::ADD)),
   };
+  // In 6-stage pipeline, insert dedicated MEMCHK hardware verification stage
   if (layout == StageLayout::SIX_STAGE) {
     r.push_back(mmov(IR::MEMCHK_ADDR, IR::ALU_RESULT, a_chk(MemChkOp::CHECK), SC::CHECK));
   }
@@ -79,12 +87,14 @@ Routine ld_routine(StageLayout layout) {
   return r;
 }
 
+// Word store routine (ST): calculates effective address (RS1 + immx), checks safety, writes RD to Mem[MAR]
 Routine st_routine(StageLayout layout) {
   Routine r = {
       mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),
       mmov(IR::A, IR::REG_VAL),
       mmov(IR::B, IR::IMMX, a_alu(AluOp::ADD)),
   };
+  // In 6-stage pipeline, insert dedicated MEMCHK hardware verification stage
   if (layout == StageLayout::SIX_STAGE) {
     r.push_back(mmov(IR::MEMCHK_ADDR, IR::ALU_RESULT, a_chk(MemChkOp::CHECK), SC::CHECK));
   }
@@ -95,6 +105,7 @@ Routine st_routine(StageLayout layout) {
   return r;
 }
 
+// Unconditional branch routine (B): updates PC to precalculated branch target
 Routine b_routine() {
   return {
       mmov(IR::PC, IR::BRANCH_TARGET),
@@ -102,6 +113,7 @@ Routine b_routine() {
   };
 }
 
+// Conditional branch routine template: tests flag condition; if matched, updates PC to target
 Routine branch_if(InternalReg flag, std::int32_t value) {
   return {
       mbeq(flag, value, L_BRANCH),
@@ -111,41 +123,47 @@ Routine branch_if(InternalReg flag, std::int32_t value) {
   };
 }
 
+// Subroutine call routine (CALL): pushes return PC onto full-descending stack at [SP-4], updates SP, and jumps
 // full-descending stack, sp is r14
 Routine call_routine(StageLayout layout) {
   Routine r = {
-      mmovi(IR::REG_SRC, REG_SP, a_reg(RegOp::READ)),
-      madd(IR::REG_VAL, -4),
-      mmov(IR::MAR, IR::REG_VAL),
+      mmovi(IR::REG_SRC, REG_SP, a_reg(RegOp::READ)),       // 1. Read stack pointer (r14)
+      madd(IR::REG_VAL, -4),                                // 2. Decrement stack pointer (SP - 4)
+      mmov(IR::MAR, IR::REG_VAL),                           // 3. Set memory address to decremented SP
   };
+  // In 6-stage pipeline, insert dedicated MEMCHK hardware verification stage for stack bounds
   if (layout == StageLayout::SIX_STAGE) {
     r.push_back(mmov(IR::MEMCHK_ADDR, IR::MAR, a_chk(MemChkOp::CHECK), SC::CHECK));
   }
-  r.push_back(mmov(IR::REG_DATA, IR::REG_VAL, a_reg(RegOp::WRITE), SC::WRITEBACK));
-  r.push_back(mmov(IR::MDR, IR::PC, a_mem(MemOp::WRITE), SC::MEMORY));
-  r.push_back(mmov(IR::PC, IR::BRANCH_TARGET));
+  r.push_back(mmov(IR::REG_DATA, IR::REG_VAL, a_reg(RegOp::WRITE), SC::WRITEBACK)); // 4. Commit updated SP to r14
+  r.push_back(mmov(IR::MDR, IR::PC, a_mem(MemOp::WRITE), SC::MEMORY));               // 5. Store return PC at Mem[SP]
+  r.push_back(mmov(IR::PC, IR::BRANCH_TARGET));                                       // 6. Redirect PC to target
   r.push_back(mb(kPreamble));
   return r;
 }
 
+// Subroutine return routine (RET): pops return address from [SP] into PC, increments SP by 4
 Routine ret_routine(StageLayout layout) {
   Routine r = {
-      mmovi(IR::REG_SRC, REG_SP, a_reg(RegOp::READ)),
-      mmov(IR::MAR, IR::REG_VAL),
+      mmovi(IR::REG_SRC, REG_SP, a_reg(RegOp::READ)),       // 1. Read stack pointer (r14)
+      mmov(IR::MAR, IR::REG_VAL),                           // 2. Set memory address to current SP
   };
+  // In 6-stage pipeline, insert dedicated MEMCHK hardware verification stage
   if (layout == StageLayout::SIX_STAGE) {
     r.push_back(mmov(IR::MEMCHK_ADDR, IR::MAR, a_chk(MemChkOp::CHECK), SC::CHECK));
   }
-  r.push_back(mmov(IR::MAR, IR::REG_VAL, a_mem(MemOp::READ), SC::MEMORY));
-  r.push_back(mmov(IR::PC, IR::LD_RESULT, 0, SC::MEMORY));
-  r.push_back(madd(IR::REG_VAL, 4));
-  r.push_back(mmov(IR::REG_DATA, IR::REG_VAL, a_reg(RegOp::WRITE), SC::WRITEBACK));
+  r.push_back(mmov(IR::MAR, IR::REG_VAL, a_mem(MemOp::READ), SC::MEMORY));           // 3. Read return PC from Mem[SP]
+  r.push_back(mmov(IR::PC, IR::LD_RESULT, 0, SC::MEMORY));                           // 4. Load return address into PC
+  r.push_back(madd(IR::REG_VAL, 4));                                                  // 5. Increment stack pointer (SP + 4)
+  r.push_back(mmov(IR::REG_DATA, IR::REG_VAL, a_reg(RegOp::WRITE), SC::WRITEBACK)); // 6. Commit updated SP to r14
   r.push_back(mb(kPreamble));
   return r;
 }
 
+// Processor halt routine (HALT): triggers CPU halt control line
 Routine halt_routine() { return {mhalt()}; }
 
+// Memory bounds check routine (BNDCHK): checks base + offset against bounds checker without memory access
 // ---- Format 4: BNDCHK -------------------------------------------------------
 Routine bndchk_routine() {
   return {
@@ -157,6 +175,7 @@ Routine bndchk_routine() {
   };
 }
 
+// 3-operand floating-point operation (FADD, FSUB, FMUL, FDIV): executes FP operation and writes float reg RD
 // ---- Format 7: Floating-point 3-operand (FADD, FSUB, FMUL, FDIV) ------------
 Routine fpu3(FpuOp op) {
   return {
@@ -170,6 +189,7 @@ Routine fpu3(FpuOp op) {
   };
 }
 
+// Floating-point comparison (FCMP): compares two float registers and sets floating-point condition code (FCC)
 // ---- Format 8: Floating-point 2-operand (FCMP, FMOV) ------------------------
 Routine fcmp_routine() {
   return {
@@ -181,6 +201,7 @@ Routine fcmp_routine() {
   };
 }
 
+// Floating-point move (FMOV): transfers float value from RS2 into RD
 Routine fmov_routine() {
   return {
       mmov(IR::FP_SRC, IR::RS2, a_fpu(FpuOp::READ)),
@@ -191,6 +212,7 @@ Routine fmov_routine() {
   };
 }
 
+// Floating-point load (FLD): reads word from memory (RS1 + immx) into float register RD
 // ---- Format 4: Floating-point memory (FLD, FST) -----------------------------
 Routine fld_routine(StageLayout layout) {
   Routine r = {
@@ -208,6 +230,7 @@ Routine fld_routine(StageLayout layout) {
   return r;
 }
 
+// Floating-point store (FST): writes float register RD to memory location (RS1 + immx)
 Routine fst_routine(StageLayout layout) {
   Routine r = {
       mmov(IR::REG_SRC, IR::RS1, a_reg(RegOp::READ)),
@@ -226,6 +249,7 @@ Routine fst_routine(StageLayout layout) {
 
 }  // namespace
 
+// Builds the full microcode image table mapping all 34 RISC201 opcodes to their microcode routines
 Program build_program(StageLayout layout) {
   Program p;
   auto add = [&p](Opcode op, Routine r) { p.push_back(ProgramEntry{op, std::move(r)}); };
