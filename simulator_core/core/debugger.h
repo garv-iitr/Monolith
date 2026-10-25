@@ -12,10 +12,11 @@ namespace risc201 {
 // interactive debugger on top of the cpu
 class Debugger {
  public:
-  explicit Debugger(std::size_t mem_words = risc201::cu::MemoryUnit::kDefaultWords,
-                    risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE,
-                    bool vertical = false)
-      : cpu_(mem_words, layout, vertical) {}
+  explicit Debugger(
+      std::size_t mem_words = risc201::cu::MemoryUnit::kDefaultWords,
+      risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE,
+      ControlEncoding encoding = ControlEncoding::HORIZONTAL)
+      : cpu_(mem_words, layout, encoding) {}
 
   const Cpu& cpu() const { return cpu_; }
   std::string render_stack(int window = 8) const {

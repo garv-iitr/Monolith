@@ -5,19 +5,22 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "control_unit.h"
 #include "isa_spec/isa.h"
+#include "memory_safety/memory_map.h"
+#include "memory_safety/visualizer.h"
 #include "microcode/routine_layout.h"
 #include "simulator_core/core/alu_unit.h"
 #include "simulator_core/core/exception.h"
 #include "simulator_core/core/state_view.h"
-#include "memory_safety/visualizer.h"
 
 namespace risc201 {
 
-// type eraser so the cpu can hold the horizontal or the vertical unit
+enum class ControlEncoding : std::uint8_t { HORIZONTAL, VERTICAL };
+
 class CuUnit {
  public:
   virtual ~CuUnit() = default;
@@ -28,46 +31,47 @@ class CuUnit {
   virtual const risc201::cu::ControlSignals& signals() const = 0;
 };
 
-template <typename CU, typename Rom>
-class CuHolder : public CuUnit {
+template <typename ControlUnit, typename MicroWord>
+class CuHolder final : public CuUnit {
  public:
-  CuHolder(risc201::cu::Datapath& dp, risc201::cu::StageLayout layout, Rom rom)
-      : cu_(dp, layout) {
-    cu_.install(std::move(rom));
+  CuHolder(risc201::cu::Datapath& datapath,
+           risc201::cu::StageLayout layout,
+           risc201::cu::ControlMemory<MicroWord> memory)
+      : control_unit_(datapath, layout) {
+    control_unit_.install(std::move(memory));
   }
-  bool step() override { return cu_.step(); }
-  void reset() override { cu_.reset(); }
-  std::uint16_t micro_pc() const override { return cu_.micro_pc(); }
-  const char* stage() const override { return cu_.stage(); }
-  const risc201::cu::ControlSignals& signals() const override { return cu_.signals(); }
+
+  bool step() override { return control_unit_.step(); }
+  void reset() override { control_unit_.reset(); }
+  std::uint16_t micro_pc() const override { return control_unit_.micro_pc(); }
+  const char* stage() const override { return control_unit_.stage(); }
+  const risc201::cu::ControlSignals& signals() const override {
+    return control_unit_.signals();
+  }
 
  private:
-  CU cu_;
+  ControlUnit control_unit_;
 };
 
 class Cpu {
  public:
   explicit Cpu(std::size_t mem_words = risc201::cu::MemoryUnit::kDefaultWords,
                risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE,
-               bool vertical = false)
-      : dp_(mem_words, true),
-        alu_(std::make_unique<HardwareAlu>()),
-        vertical_(vertical) {
+               ControlEncoding encoding = ControlEncoding::HORIZONTAL)
+      : dp_(mem_words, true), alu_(std::make_unique<HardwareAlu>()) {
     const risc201::cu::Program program = risc201::cu::build_program(layout);
-    if (vertical) {
-      cu_ = std::make_unique<
-          CuHolder<risc201::cu::VerticalControlUnit,
-                   risc201::cu::ControlMemory<risc201::cu::VerticalMicroWord>>>(
+    micro_layout_ = risc201::cu::layout_program(program);
+
+    if (encoding == ControlEncoding::VERTICAL) {
+      cu_ = std::make_unique<CuHolder<risc201::cu::VerticalControlUnit,
+                                      risc201::cu::VerticalMicroWord>>(
           dp_, layout, risc201::cu::assemble_vertical(program));
     } else {
-      cu_ = std::make_unique<
-          CuHolder<risc201::cu::HorizontalControlUnit,
-                   risc201::cu::ControlMemory<risc201::cu::HorizontalMicroWord>>>(
+      cu_ = std::make_unique<CuHolder<risc201::cu::HorizontalControlUnit,
+                                      risc201::cu::HorizontalMicroWord>>(
           dp_, layout, risc201::cu::assemble_horizontal(program));
     }
-    micro_layout_ = risc201::cu::layout_program(program);
-    dp_.rf.write(REG_SP, static_cast<Word>(
-                             risc201::safety::MemoryMap::kStackTop));
+    initialize_stack_pointer();
   }
 
   void load(const std::vector<Word>& code) { dp_.mem.load_words(0, code); }
@@ -110,8 +114,7 @@ class Cpu {
   void reset() {
     dp_.reset();
     cu_->reset();
-    dp_.rf.write(REG_SP, static_cast<Word>(
-                             risc201::safety::MemoryMap::kStackTop));
+    initialize_stack_pointer();
     fault_code_ = ExceptionCode::NONE;
     fault_address_ = 0;
     frame_boundaries_.clear();
@@ -122,9 +125,11 @@ class Cpu {
   bool faulted() const { return fault_code_ != ExceptionCode::NONE; }
   ExceptionCode fault_code() const { return fault_code_; }
   std::uint64_t fault_address() const { return fault_address_; }
+
   const std::vector<Word>& stack_frame_boundaries() const {
     return frame_boundaries_;
   }
+
   std::vector<Word> stack_memory_snapshot() const {
     const std::vector<Word> memory = dp_.mem.snapshot();
     const std::size_t first_word = static_cast<std::size_t>(
@@ -143,10 +148,12 @@ class Cpu {
     }
     return stack;
   }
+
   Word stack_pointer_word() const {
     return read_reg(REG_SP) /
            static_cast<Word>(risc201::safety::MemoryMap::kWordBytes);
   }
+
   std::string render_stack_diff(const std::vector<Word>& before,
                                 Word before_sp) const {
     const Word limit = static_cast<Word>(
@@ -159,6 +166,7 @@ class Cpu {
     return visualizer.render_diff(before, stack_memory_snapshot(), before_sp,
                                   stack_pointer_word(), limit);
   }
+
   std::string render_stack(int window = 8) const {
     const Word base = static_cast<Word>(
         risc201::safety::MemoryMap::kStackTop /
@@ -173,15 +181,13 @@ class Cpu {
       frames.push_back(
           boundary / risc201::safety::MemoryMap::kWordBytes);
     }
-    return visualizer.render(
-        dp_.mem.snapshot(),
-        stack_pointer_word(), 0, window,
-        frames);
+    return visualizer.render(dp_.mem.snapshot(), stack_pointer_word(), 0, window,
+                             frames);
   }
+
   std::uint16_t micro_pc() const { return cu_->micro_pc(); }
   const char* stage() const { return cu_->stage(); }
   const risc201::cu::ControlSignals& signals() const { return cu_->signals(); }
-  bool vertical() const { return vertical_; }
 
   Word read_reg(std::uint8_t i) const { return dp_.rf.read(i); }
   void write_reg(std::uint8_t i, Word value) { dp_.rf.write(i, value); }
@@ -193,10 +199,10 @@ class Cpu {
   Word pc() const { return dp_.regs.pc; }
   Word ir() const { return dp_.regs.ir; }
 
-  // where each opcodes microroutine sits in control memory
   std::uint16_t micro_routine_start(std::uint8_t opcode) const {
     return micro_layout_.entry_of(static_cast<Opcode>(opcode));
   }
+
   std::uint16_t micro_routine_end(std::uint8_t opcode) const {
     const std::uint16_t start = micro_routine_start(opcode);
     std::uint16_t end = static_cast<std::uint16_t>(micro_layout_.stmts.size());
@@ -204,6 +210,7 @@ class Cpu {
       if (e.second > start && e.second < end) end = e.second;
     return end;
   }
+
   std::uint16_t micro_preamble_len() const {
     std::uint16_t first = static_cast<std::uint16_t>(micro_layout_.stmts.size());
     for (const auto& e : micro_layout_.entries)
@@ -228,11 +235,14 @@ class Cpu {
   }
 
  private:
+  void initialize_stack_pointer() {
+    dp_.rf.write(REG_SP, static_cast<Word>(risc201::safety::MemoryMap::kStackTop));
+  }
+
   risc201::cu::Datapath dp_;
   std::unique_ptr<CuUnit> cu_;
   std::unique_ptr<AluUnit> alu_;
   risc201::cu::MicroProgramLayout micro_layout_;
-  bool vertical_ = false;
   ExceptionCode fault_code_ = ExceptionCode::NONE;
   std::uint64_t fault_address_ = 0;
   std::vector<Word> frame_boundaries_;

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -11,34 +12,10 @@
 
 namespace {
 
-Word enc_imm(Opcode op, int rd, int rs1, int imm) {
-  return (static_cast<Word>(op) << 26) | (1u << 24) |
-         (static_cast<Word>(rd & 0xF) << 20) | (static_cast<Word>(rs1 & 0xF) << 16) |
-         static_cast<Word>(imm & 0xFFFF);
-}
-
-Word enc_reg(Opcode op, int rd, int rs1, int rs2) {
-  return (static_cast<Word>(op) << 26) | (static_cast<Word>(rd & 0xF) << 20) |
-         (static_cast<Word>(rs1 & 0xF) << 16) | (static_cast<Word>(rs2 & 0xF) << 12);
-}
-
-Word enc_halt() { return static_cast<Word>(Opcode::HALT) << 26; }
-
 // text at 0, .data at 0x10000 (matches the assembler defaults)
 constexpr Word kTextBase = 0x00000000;
 constexpr Word kDataBase = 0x00010000;
 constexpr std::size_t kMemWords = 0x20000 / 4;
-
-std::vector<Word> demo_program() {
-  return {
-      enc_imm(Opcode::MOV, 1, 0, 6),
-      enc_imm(Opcode::MOV, 2, 0, 7),
-      enc_reg(Opcode::MUL, 3, 1, 2),
-      enc_reg(Opcode::ADD, 4, 1, 2),
-      enc_reg(Opcode::SUB, 5, 2, 1),
-      enc_halt(),
-  };
-}
 
 bool parse_word(const std::string& s, Word& out) {
   try {
@@ -90,20 +67,45 @@ bool load_hex_file(const std::string& path, std::vector<Word>& out) {
 
 void print_registers(const risc201::Debugger& dbg) {
   const risc201::StateView& v = dbg.view();
-  std::printf("  pc=0x%X  ir=0x%08X  microPC=%u  stage=%s\n",
-              static_cast<unsigned>(v.pc), static_cast<unsigned>(v.ir),
-              static_cast<unsigned>(v.micro_pc), v.stage);
-  std::printf("  flags: Z=%d N=%d C=%d V=%d\n", v.flags.Z, v.flags.N, v.flags.C,
-              v.flags.V);
-  for (int i = 0; i < NUM_REGISTERS; ++i) {
-    std::printf("  r%-2d=0x%-8X%s", i, static_cast<unsigned>(v.gprs[i]),
-                (i % 4 == 3) ? "\n" : "");
+  std::vector<std::string> registers;
+  char line[160];
+  std::snprintf(line, sizeof(line), "  pc=0x%X  ir=0x%08X  microPC=%u  stage=%s",
+                static_cast<unsigned>(v.pc), static_cast<unsigned>(v.ir),
+                static_cast<unsigned>(v.micro_pc), v.stage);
+  registers.emplace_back(line);
+  std::snprintf(line, sizeof(line), "  flags: Z=%d N=%d C=%d V=%d", v.flags.Z,
+                v.flags.N, v.flags.C, v.flags.V);
+  registers.emplace_back(line);
+  for (int row = 0; row < NUM_REGISTERS / 4; ++row) {
+    std::snprintf(line, sizeof(line), "  r%-2d=0x%-8X  r%-2d=0x%-8X  r%-2d=0x%-8X  r%-2d=0x%-8X",
+                  row * 4, static_cast<unsigned>(v.gprs[row * 4]),
+                  row * 4 + 1, static_cast<unsigned>(v.gprs[row * 4 + 1]),
+                  row * 4 + 2, static_cast<unsigned>(v.gprs[row * 4 + 2]),
+                  row * 4 + 3, static_cast<unsigned>(v.gprs[row * 4 + 3]));
+    registers.emplace_back(line);
   }
-  if (v.fault_code != ExceptionCode::NONE)
-    std::printf("  FAULT: %s @ 0x%llX\n", to_string(v.fault_code),
-                static_cast<unsigned long long>(v.fault_address));
-  else if (v.halted)
-    std::printf("  halted: %s\n", (v.halt_reason[0] != '\0') ? v.halt_reason : "halt");
+  if (v.fault_code != ExceptionCode::NONE) {
+    std::snprintf(line, sizeof(line), "  FAULT: %s @ 0x%llX",
+                  to_string(v.fault_code),
+                  static_cast<unsigned long long>(v.fault_address));
+    registers.emplace_back(line);
+  } else if (v.halted) {
+    std::snprintf(line, sizeof(line), "  halted: %s",
+                  (v.halt_reason[0] != '\0') ? v.halt_reason : "halt");
+    registers.emplace_back(line);
+  }
+
+  std::istringstream stack(dbg.render_stack(16));
+  std::string stack_line;
+  std::vector<std::string> stack_lines;
+  while (std::getline(stack, stack_line)) stack_lines.push_back(stack_line);
+
+  const std::size_t rows = std::max(registers.size(), stack_lines.size());
+  for (std::size_t i = 0; i < rows; ++i) {
+    const char* register_line = i < registers.size() ? registers[i].c_str() : "";
+    const char* stack_text = i < stack_lines.size() ? stack_lines[i].c_str() : "";
+    std::printf("%-66s%s\n", register_line, stack_text);
+  }
 }
 
 void print_micro_state(const risc201::Debugger& dbg) {
@@ -157,7 +159,6 @@ void print_help() {
       "  stack [window]        show stack words, SP and call-frame boundaries\n"
       "  stack trace [steps] [window]  render stack after each instruction with diffs\n"
       "  load <text> [data]    load hex program (text at 0x0, data at 0x10000)\n"
-      "  demo                  reload the built-in demo program\n"
       "  reset                 reset the machine\n"
       "  help | h              this help\n"
       "  quit | q              exit\n");
@@ -165,33 +166,51 @@ void print_help() {
 
 }  // namespace
 
-int main(int argc, char** argv) {
+int main(int argc, char* argv[]) {
   risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE;
-  bool vertical = false;
+  risc201::ControlEncoding encoding = risc201::ControlEncoding::HORIZONTAL;
+
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
+    if (arg == "--help" || arg == "-h") {
+      std::printf("Usage: risc201-sim [--stages 4|6] [--encoding horizontal|vertical] [--help|-h]\n"
+                  "  --stages    Select the 4-stage or 6-stage microprogram (default: 6)\n"
+                  "  --encoding  Select horizontal or vertical control encoding (default: horizontal)\n\n"
+                  "Commands:\n");
+      print_help();
+      return 0;
+    }
     if (arg == "--stages" && i + 1 < argc) {
-      const std::string v = argv[++i];
-      if (v == "4") layout = risc201::cu::StageLayout::FOUR_STAGE;
-      else if (v == "6") layout = risc201::cu::StageLayout::SIX_STAGE;
-      else { std::printf("--stages must be 4 or 6\n"); return 1; }
+      const std::string value = argv[++i];
+      if (value == "4") {
+        layout = risc201::cu::StageLayout::FOUR_STAGE;
+      } else if (value == "6") {
+        layout = risc201::cu::StageLayout::SIX_STAGE;
+      } else {
+        std::printf("Invalid stage count '%s' (expected 4 or 6)\n", value.c_str());
+        return 1;
+      }
     } else if (arg == "--encoding" && i + 1 < argc) {
-      const std::string v = argv[++i];
-      if (v == "horizontal" || v == "h") vertical = false;
-      else if (v == "vertical" || v == "v") vertical = true;
-      else { std::printf("--encoding must be horizontal or vertical\n"); return 1; }
+      const std::string value = argv[++i];
+      if (value == "horizontal") {
+        encoding = risc201::ControlEncoding::HORIZONTAL;
+      } else if (value == "vertical") {
+        encoding = risc201::ControlEncoding::VERTICAL;
+      } else {
+        std::printf("Invalid encoding '%s' (expected horizontal or vertical)\n", value.c_str());
+        return 1;
+      }
     } else {
-      std::printf("usage: risc201-sim [--stages 4|6] [--encoding horizontal|vertical]\n");
+      std::printf("Unknown or incomplete option: %s\nUse --help for usage.\n", arg.c_str());
       return 1;
     }
   }
 
-  risc201::Debugger dbg(kMemWords, layout, vertical);
-  dbg.load(demo_program());
+  risc201::Debugger dbg(kMemWords, layout, encoding);
 
-  std::printf("RISC201 debugger (%s, %s). Type 'help' for commands.\n",
-              vertical ? "vertical" : "horizontal",
-              layout == risc201::cu::StageLayout::FOUR_STAGE ? "4-stage" : "6-stage");
+  std::printf("RISC201 debugger (%s, %u-stage). Type 'help' for commands.\n",
+              encoding == risc201::ControlEncoding::HORIZONTAL ? "horizontal" : "vertical",
+              static_cast<unsigned>(layout));
   print_registers(dbg);
 
   std::string line;
@@ -363,9 +382,6 @@ int main(int argc, char** argv) {
       } else {
         std::printf("  usage: load <text.hex> [data.hex]\n");
       }
-    } else if (cmd == "demo") {
-      dbg.load(demo_program());
-      print_registers(dbg);
     } else if (cmd == "reset") {
       dbg.reset();
       print_registers(dbg);

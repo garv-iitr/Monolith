@@ -202,13 +202,17 @@ RISC201_TEST(cpu_memory_safety_configuration_matrix) {
   struct Configuration {
     const char* name;
     risc201::cu::StageLayout layout;
-    bool vertical;
+    risc201::ControlEncoding encoding;
   };
   const std::array<Configuration, 4> configurations = {{
-      {"4-stage horizontal", risc201::cu::StageLayout::FOUR_STAGE, false},
-      {"4-stage vertical", risc201::cu::StageLayout::FOUR_STAGE, true},
-      {"6-stage horizontal", risc201::cu::StageLayout::SIX_STAGE, false},
-      {"6-stage vertical", risc201::cu::StageLayout::SIX_STAGE, true},
+      {"4-stage horizontal", risc201::cu::StageLayout::FOUR_STAGE,
+       risc201::ControlEncoding::HORIZONTAL},
+      {"4-stage vertical", risc201::cu::StageLayout::FOUR_STAGE,
+       risc201::ControlEncoding::VERTICAL},
+      {"6-stage horizontal", risc201::cu::StageLayout::SIX_STAGE,
+       risc201::ControlEncoding::HORIZONTAL},
+      {"6-stage vertical", risc201::cu::StageLayout::SIX_STAGE,
+       risc201::ControlEncoding::VERTICAL},
   }};
   const std::array<const char*, 14> scenarios = {{
       "CALL/RET round-trip", "CALL stack overflow", "empty RET underflow",
@@ -225,7 +229,7 @@ RISC201_TEST(cpu_memory_safety_configuration_matrix) {
   for (const Configuration& config : configurations) {
     for (std::size_t scenario = 0; scenario < scenarios.size(); ++scenario) {
       risc201::Cpu cpu(risc201::cu::MemoryUnit::kDefaultWords, config.layout,
-                       config.vertical);
+                       config.encoding);
       bool ok = false;
       switch (scenario) {
         case 0:
