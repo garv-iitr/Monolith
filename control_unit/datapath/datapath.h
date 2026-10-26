@@ -16,6 +16,15 @@ namespace risc201::cu {
 
 class Datapath {
  public:
+  struct Snapshot {
+    InternalRegisters regs;
+    SharedBus bus;
+    RegisterFileUnit rf;
+    bool halted;
+    const char* halt_reason;
+    StageClass last_stage;
+  };
+
   InternalRegisters regs;
   SharedBus bus;
 
@@ -32,6 +41,8 @@ class Datapath {
                     bool runtime_safety = false);
 
   void reset();
+  Snapshot snapshot() const;
+  void restore(const Snapshot& snapshot);
   void execute(const ControlSignals& sig, Word muimm);
 
   const char* current_stage_name() const { return stage_name(layout, last_stage); }

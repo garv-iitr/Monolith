@@ -51,11 +51,25 @@ Datapath::Datapath(std::size_t mem_words, bool runtime_safety)
 
 void Datapath::reset() {
   regs.reset();
+  bus = SharedBus{};
   rf.reset();
   mem.reset();
   halted = false;
   halt_reason = "";
   last_stage = StageClass::FETCH;
+}
+
+Datapath::Snapshot Datapath::snapshot() const {
+  return Snapshot{regs, bus, rf, halted, halt_reason, last_stage};
+}
+
+void Datapath::restore(const Snapshot& snapshot) {
+  regs = snapshot.regs;
+  bus = snapshot.bus;
+  rf = snapshot.rf;
+  halted = snapshot.halted;
+  halt_reason = snapshot.halt_reason;
+  last_stage = snapshot.last_stage;
 }
 
 void Datapath::execute(const ControlSignals& sig, Word muimm) {
