@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,12 +25,18 @@ enum class ControlEncoding : std::uint8_t { HORIZONTAL, VERTICAL };
 
 class CuUnit {
  public:
+  struct State {
+    virtual ~State() = default;
+  };
+
   virtual ~CuUnit() = default;
   virtual bool step() = 0;
   virtual void reset() = 0;
   virtual std::uint16_t micro_pc() const = 0;
   virtual const char* stage() const = 0;
   virtual const risc201::cu::ControlSignals& signals() const = 0;
+  virtual std::unique_ptr<State> snapshot() const = 0;
+  virtual void restore(const State& state) = 0;
 };
 
 template <typename ControlUnit, typename MicroWord>
@@ -49,12 +57,37 @@ class CuHolder final : public CuUnit {
     return control_unit_.signals();
   }
 
+  std::unique_ptr<typename CuUnit::State> snapshot() const override {
+    return std::make_unique<ControlState>(control_unit_.snapshot());
+  }
+
+  void restore(const typename CuUnit::State& state) override {
+    const auto* control_state = dynamic_cast<const ControlState*>(&state);
+    if (!control_state) throw std::invalid_argument("control-unit history mismatch");
+    control_unit_.restore(control_state->snapshot);
+  }
+
  private:
+  struct ControlState final : CuUnit::State {
+    explicit ControlState(typename ControlUnit::Snapshot value)
+        : snapshot(std::move(value)) {}
+    typename ControlUnit::Snapshot snapshot;
+  };
+
   ControlUnit control_unit_;
 };
 
 class Cpu {
  public:
+  struct Checkpoint {
+    risc201::cu::Datapath::Snapshot datapath;
+    std::unique_ptr<CuUnit::State> control;
+    ExceptionCode fault_code;
+    std::uint64_t fault_address;
+    std::vector<Word> frame_boundaries;
+    std::size_t memory_journal_mark;
+  };
+
   explicit Cpu(std::size_t mem_words = risc201::cu::MemoryUnit::kDefaultWords,
                risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE,
                ControlEncoding encoding = ControlEncoding::HORIZONTAL)
@@ -74,8 +107,39 @@ class Cpu {
     initialize_stack_pointer();
   }
 
-  void load(const std::vector<Word>& code) { dp_.mem.load_words(0, code); }
-  void load(Word base, const std::vector<Word>& code) { dp_.mem.load_words(base, code); }
+  void load(const std::vector<Word>& code) {
+    dp_.mem.load_words(0, code);
+    dp_.mem.clear_journal();
+  }
+  void load(Word base, const std::vector<Word>& code) {
+    dp_.mem.load_words(base, code);
+    dp_.mem.clear_journal();
+  }
+
+  void clear_history_journal() { dp_.mem.clear_journal(); }
+
+  Checkpoint checkpoint() {
+    const std::size_t journal_mark = dp_.mem.begin_journal();
+    return Checkpoint{dp_.snapshot(), cu_->snapshot(), fault_code_,
+                      fault_address_, frame_boundaries_, journal_mark};
+  }
+
+  std::vector<risc201::cu::MemoryUnit::WriteDelta> finish_step(
+      std::size_t journal_mark) {
+    return dp_.mem.take_journal(journal_mark);
+  }
+
+  void restore(const Checkpoint& checkpoint,
+               const std::vector<risc201::cu::MemoryUnit::WriteDelta>& memory) {
+    dp_.mem.clear_journal();
+    dp_.mem.restore_journal(memory);
+    dp_.restore(checkpoint.datapath);
+    cu_->restore(*checkpoint.control);
+    fault_code_ = checkpoint.fault_code;
+    fault_address_ = checkpoint.fault_address;
+    frame_boundaries_ = checkpoint.frame_boundaries;
+    dp_.mem.clear_journal();
+  }
 
   bool step() {
     if (dp_.halted) return false;
@@ -216,6 +280,10 @@ class Cpu {
     for (const auto& e : micro_layout_.entries)
       if (e.second < first) first = e.second;
     return first;
+  }
+
+  const risc201::cu::MicroProgramLayout& micro_layout() const {
+    return micro_layout_;
   }
 
   StateView snapshot() const {
