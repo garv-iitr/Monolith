@@ -15,6 +15,12 @@ namespace risc201::cu {
 template <typename MicroWord, typename Codec>
 class MicroControlUnit {
  public:
+  struct Snapshot {
+    MicroSequencer sequencer;
+    MicroWord word{};
+    DecodedMicro decoded{};
+  };
+
   ControlMemory<MicroWord> cm;
   MicroSequencer seq;
   StageLayout layout = StageLayout::SIX_STAGE;
@@ -65,6 +71,15 @@ class MicroControlUnit {
     // mirror sequencer pc into regs, the tracer reads it
     dp.regs.micro_pc = seq.micro_pc;
     return !dp.halted;
+  }
+
+  Snapshot snapshot() const { return Snapshot{seq, last_word_, last_}; }
+
+  void restore(const Snapshot& snapshot) {
+    seq = snapshot.sequencer;
+    last_word_ = snapshot.word;
+    last_ = snapshot.decoded;
+    dp.regs.micro_pc = seq.micro_pc;
   }
 
   const DecodedMicro& decoded() const { return last_; }
