@@ -21,9 +21,18 @@ struct AssemblyOptions {
     bool     warnShiftRange = true;
 };
 
+struct AssemblySourceWord {
+    uint32_t address;
+    int sourceLine;
+    std::string sourceText;
+    std::string section;
+    bool executable;
+};
+
 struct AssemblyResult {
     std::vector<uint32_t> code;
     std::vector<uint32_t> data;
+    std::vector<AssemblySourceWord> sourceWords;
     SymbolTable           symbols;
     std::vector<std::string> errors;
     std::vector<std::string> warnings;
