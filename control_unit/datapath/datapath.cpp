@@ -1,3 +1,4 @@
+// Implements datapath clock cycle execution, bus routing, register latching, and unit clocking.
 #include "datapath/datapath.h"
 
 #include "simulator_core/core/exception.h"
@@ -49,6 +50,7 @@ void validate_memory_address(Word addr, Word sp,
 Datapath::Datapath(std::size_t mem_words, bool runtime_safety)
     : mem(mem_words), runtime_safety_(runtime_safety) {}
 
+// Resets internal registers, general register file, memory array, and status flags
 void Datapath::reset() {
   regs.reset();
   rf.reset();
@@ -58,26 +60,35 @@ void Datapath::reset() {
   last_stage = StageClass::FETCH;
 }
 
+// Executes one micro-cycle across the datapath according to control signals and micro-immediate
 void Datapath::execute(const ControlSignals& sig, Word muimm) {
   last_stage = sig.stage;
+
+  // 1. Process CPU halt control strobe
   if (sig.halt) {
     halted = true;
     return;
   }
 
+  // Work on next-state register container to model synchronous clock latching
   InternalRegisters next = regs;
 
+  // 2. Instruction fetch strobe: Load machine instruction directly from Memory[PC] into IR
   if (sig.fetch_ir) {
     next.ir = mem.fetch(regs.pc);
   }
 
+  // 3. Instruction decode: Extract register fields (rd, rs1, rs2) and expand immediates
   decode.eval(regs, next);
 
+  // 4. Source register drive: Read value from selected source register onto the write bus
   const Word write_val =
       (sig.write_src == InternalReg::NONE) ? Word{0} : regs.get(sig.write_src);
 
+  // 5. Shared bus evaluation: Compute adder sum, equality branch flag, and multiplex to read_bus
   bus.eval(write_val, muimm, sig.transfer_sel);
 
+  // 6. Register write-enable latching: Write read_bus data into all registers selected by read_mask
   for (int i = 1; i < static_cast<int>(kNumInternalRegs); ++i) {
     const InternalReg r = static_cast<InternalReg>(i);
     if (sig.reads(r)) next.set(r, bus.read_bus);
@@ -106,6 +117,8 @@ void Datapath::execute(const ControlSignals& sig, Word muimm) {
 
   // alu/fpu/memchk live in other files, we just emit their args on the bus
   rf.tick(next, sig, next);
+
+  // 8. Internal ALU pass-through modes (optimizations for MOV and NOT operations)
   if (sig.alu_op == AluOp::PASS_B) {
     next.alu_result = next.B;
   } else if (sig.alu_op == AluOp::PASS_A) {
@@ -125,6 +138,7 @@ void Datapath::execute(const ControlSignals& sig, Word muimm) {
   }
   mem.tick(next, sig, next);
 
+  // 10. Synchronous state commit: Latch next-cycle registers
   regs = next;
 }
 

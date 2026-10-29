@@ -1,3 +1,4 @@
+// Major use: Assembler interface compiling microcode programs into horizontal ControlMemory ROM images.
 #ifndef RISC201_CU_H_ASSEMBLER_H
 #define RISC201_CU_H_ASSEMBLER_H
 
@@ -7,6 +8,7 @@
 
 namespace risc201::cu {
 
+// Compiles and links high-level microcode routines into a horizontal ROM containing fully unpacked control words
 ControlMemory<HorizontalMicroWord> assemble_horizontal(const Program& program);
 
 }

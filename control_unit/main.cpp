@@ -1,3 +1,4 @@
+// Major use: Standalone test bench and cycle-by-cycle trace visualizer for horizontal and vertical control units.
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -13,6 +14,7 @@ using namespace risc201::cu;
 
 namespace {
 
+// Array of all 34 architectural opcodes used for coverage verification
 constexpr int kOpcodeCount = 34;
 const std::array<Opcode, kOpcodeCount> kAllOpcodes = {
     Opcode::NOP, Opcode::ADD, Opcode::SUB, Opcode::MUL, Opcode::DIV, Opcode::MOD,
@@ -24,22 +26,31 @@ const std::array<Opcode, kOpcodeCount> kAllOpcodes = {
     Opcode::FLD,  Opcode::FST,  Opcode::FMOV,
 };
 
+// --- Helper Functions Generating Raw 32-bit Machine Words for Test Programs ---
+
+// Encodes an immediate-format instruction word (mode=1)
 Word enc_imm(Opcode op, int rd, int rs1, int imm) {
   return (static_cast<Word>(op) << 26) | (1u << 24) |
          (static_cast<Word>(rd & 0xF) << 20) | (static_cast<Word>(rs1 & 0xF) << 16) |
          static_cast<Word>(imm & 0xFFFF);
 }
+// Encodes a register-register format instruction word (mode=0)
 Word enc_reg(Opcode op, int rd, int rs1, int rs2) {
   return (static_cast<Word>(op) << 26) | (static_cast<Word>(rd & 0xF) << 20) |
          (static_cast<Word>(rs1 & 0xF) << 16) | (static_cast<Word>(rs2 & 0xF) << 12);
 }
+// Encodes a branch instruction word with a 26-bit PC-relative word offset
 Word enc_branch(Opcode op, int word_offset) {
   return (static_cast<Word>(op) << 26) | (static_cast<Word>(word_offset) & 0x03FFFFFF);
 }
+// Encodes a HALT instruction word
 Word enc_halt() { return static_cast<Word>(Opcode::HALT) << 26; }
+// Encodes a zero-operand instruction word (NOP, RET)
 Word enc_zero(Opcode op) { return static_cast<Word>(op) << 26; }
+// Encodes a raw 6-bit opcode for testing illegal instruction exceptions
 Word enc_raw(std::uint8_t opcode) { return static_cast<Word>(opcode) << 26; }
 
+// Test scenario specification bundling machine code, data, initial state, and expected results
 struct Program_ {
   const char* name;
   std::vector<Word> code;
@@ -54,6 +65,7 @@ struct Program_ {
   const char* expected_reason = nullptr;
 };
 
+// Test Program 1: Tests register-to-register and immediate register transfers (MOV, NOP, HALT)
 Program_ prog_transfer() {
   return {"mov/nop",
           {
@@ -68,6 +80,7 @@ Program_ prog_transfer() {
           {{1, 5}, {2, 5}, {3, 0x1234}}};
 }
 
+// Test Program 2: Tests multi-cycle subroutine CALL and RET instructions with stack pointer verification
 // branch targets are relative to the next pc: (addr+4) + offset*4
 Program_ prog_call() {
   return {"call/ret",
@@ -87,6 +100,7 @@ Program_ prog_call() {
           12};  // return addr the call pushed
 }
 
+// Test Program 3: Tests conditional and unconditional branching (BEQ, BNE, BGT, BLT, B)
 // flags are pre-seeded Z=0 N=0 so GT=1, the branch list below assumes that
 Program_ prog_branch() {
   Program_ p{"branches (beq/bne/bgt/blt)",
@@ -109,21 +123,26 @@ Program_ prog_branch() {
   return p;
 }
 
+// Test Program 4: Tests exception handling on undefined/illegal instruction opcodes
 Program_ prog_illegal() {
   Program_ p{"illegal opcode", {enc_raw(0x3F)}};
   p.expected_reason = "illegal instruction";
   return p;
 }
 
+// Architectural snapshot capturing CPU state upon halt for verification
 struct Snapshot {
-  std::array<Word, NUM_REGISTERS> regs{};
-  Word probe = 0;
-  bool halted = false;
-  bool faulted = false;
-  std::string reason;
-  int cycles = 0;
+  std::array<Word, NUM_REGISTERS> regs{}; // General register dump (r0..r15)
+  Word probe = 0;                         // Memory probe word value
+  bool halted = false;                    // Whether CPU halted normally
+  bool faulted = false;                   // Whether CPU triggered an unhandled exception
+  std::string reason;                     // Halt or exception explanation
+  int cycles = 0;                         // Total micro-cycles executed
 };
 
+// --- Trace Logging Stringifier Helpers ---
+
+// Returns string representation of the bus transfer multiplexer selection
 const char* transfer_name(TransferSel s) {
   switch (s) {
     case TransferSel::WRITE_BUS: return "write_bus";
@@ -132,6 +151,8 @@ const char* transfer_name(TransferSel s) {
   }
   return "?";
 }
+
+// Returns string representation of the sequencer next-address calculation mode
 const char* next_name(NextAddr n) {
   switch (n) {
     case NextAddr::INCREMENT:   return "next";
@@ -142,6 +163,8 @@ const char* next_name(NextAddr n) {
   }
   return "?";
 }
+
+// Returns string representation of a subunit operation code
 const char* unit_op_name(UnitId unit, std::uint8_t op) {
   switch (unit) {
     case UnitId::ALU:     return alu_op_name(static_cast<AluOp>(op));
@@ -153,6 +176,8 @@ const char* unit_op_name(UnitId unit, std::uint8_t op) {
     default:              return "nop";
   }
 }
+
+// Prints comma-separated list of internal registers currently enabled in read_mask
 void print_reads(std::uint32_t mask) {
   bool first = true;
   for (int i = 1; i < static_cast<int>(kNumInternalRegs); ++i) {
@@ -165,6 +190,7 @@ void print_reads(std::uint32_t mask) {
   if (first) std::printf("-");
 }
 
+// Compile-time ROM builder traits selecting appropriate assembler based on CU type
 template <typename CU> struct RomBuilder;
 template <> struct RomBuilder<HorizontalControlUnit> {
   static ControlMemory<HorizontalMicroWord> build(const Program& p) { return assemble_horizontal(p); }
@@ -177,6 +203,7 @@ template <typename CU> const char* encoding_name();
 template <> const char* encoding_name<HorizontalControlUnit>() { return "horizontal"; }
 template <> const char* encoding_name<VerticalControlUnit>() { return "vertical"; }
 
+// Executes a test program cycle-by-cycle under the given Control Unit type and pipeline layout
 template <typename CU>
 Snapshot execute(StageLayout layout, const Program_& prog, bool emit) {
   Datapath dp(1024);
@@ -203,6 +230,7 @@ Snapshot execute(StageLayout layout, const Program_& prog, bool emit) {
 
   Snapshot snap;
   int cycles = 0;
+  // Step simulation micro-cycle by micro-cycle until halt or cycle limit
   while (cycles < 20000) {
     const std::uint16_t pc_before = cu.micro_pc();
     bool alive = false;
@@ -218,6 +246,7 @@ Snapshot execute(StageLayout layout, const Program_& prog, bool emit) {
     }
     ++cycles;
 
+    // Optional detailed trace dump for the first 80 cycles
     if (emit && cycles <= 80) {
       const ControlSignals& s = cu.signals();
       const UnitId unit = args_unit(s.args);
@@ -232,6 +261,7 @@ Snapshot execute(StageLayout layout, const Program_& prog, bool emit) {
     if (!alive) break;
   }
 
+  // Record architectural state snapshot
   snap.cycles = cycles;
   snap.halted = dp.halted;
   snap.reason = dp.halt_reason;
@@ -250,6 +280,7 @@ Snapshot execute(StageLayout layout, const Program_& prog, bool emit) {
   return snap;
 }
 
+// Compares architectural register and memory probe equality between two simulation runs
 bool same(const Snapshot& a, const Snapshot& b) {
   if (a.probe != b.probe) return false;
   if (a.reason != b.reason) return false;
@@ -259,6 +290,7 @@ bool same(const Snapshot& a, const Snapshot& b) {
   return true;
 }
 
+// Verifies that all 34 architectural opcodes have valid microcode routines linked into ROM
 int check_coverage() {
   std::printf("\n--- microcode coverage: all %d opcodes ---\n", kOpcodeCount);
   const Program p = build_program(StageLayout::SIX_STAGE);
@@ -285,6 +317,7 @@ int check_coverage() {
 
 }
 
+// Main testbench driver validating horizontal and vertical control units against test programs
 int main() {
   std::printf("RISC201 microprogrammed control unit\n");
   std::printf("horizontally encoded microinstruction : %d bits\n", kHorizontalWordBits);
@@ -298,10 +331,13 @@ int main() {
     if (!cond) ++failures;
   };
 
+  // Run complete opcode coverage check
   failures += check_coverage();
 
+  // Test suite containing register transfers, call/ret, branch sequences, and illegal opcodes
   const std::vector<Program_> programs = {prog_transfer(), prog_call(), prog_branch(), prog_illegal()};
 
+  // Execute each test program across 4 configurations (H6, V6, H4, V4) and assert state equivalence
   for (std::size_t i = 0; i < programs.size(); ++i) {
     const Program_& p = programs[i];
     const Snapshot hs6 = execute<HorizontalControlUnit>(StageLayout::SIX_STAGE, p, i == 0);

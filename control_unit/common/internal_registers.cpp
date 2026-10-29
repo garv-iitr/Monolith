@@ -1,7 +1,9 @@
+// Major use: Implements reset, dynamic getter, and dynamic setter logic for all internal microarchitectural registers.
 #include "common/internal_registers.h"
 
 namespace risc201::cu {
 
+// Clears all architectural and microarchitectural register state to zero
 void InternalRegisters::reset() {
   pc = 0;
   ir = 0;
@@ -27,6 +29,7 @@ void InternalRegisters::reset() {
   micro_pc = 0;
 }
 
+// Retrieves the value of an internal register dynamically; used when routing write_src to the internal bus
 Word InternalRegisters::get(InternalReg reg) const {
   switch (reg) {
     case InternalReg::NONE:          return 0;
@@ -63,6 +66,7 @@ Word InternalRegisters::get(InternalReg reg) const {
   return 0;
 }
 
+// Latches data from the shared bus into the selected destination register and synchronizes condition code flags
 void InternalRegisters::set(InternalReg reg, Word value) {
   switch (reg) {
     case InternalReg::NONE:          break;
@@ -96,6 +100,7 @@ void InternalRegisters::set(InternalReg reg, Word value) {
     case InternalReg::MEMCHK_ADDR:   memchk_addr = value; break;
     case InternalReg::FLAGS_N:       flags.N = (value != 0); break;
   }
+  // Synchronize internal micro-branch condition mirrors with the architectural status flags
   // these two are just mirrors of the real flags, keep em synced
   flags_E = flags.Z;
   flags_GT = !flags.N && !flags.Z;
