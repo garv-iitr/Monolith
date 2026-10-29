@@ -1,4 +1,5 @@
 #include <cassert>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -13,6 +14,17 @@ int main() {
 
   const std::string active = visualizer.render(memory, 14, 0, 5, {14});
   assert(active.find("0xdeadbeef") != std::string::npos);
+  std::istringstream rendered(active);
+  std::string line;
+  std::size_t border_width = 0;
+  int border_count = 0;
+  while (std::getline(rendered, line)) {
+    if (line.find('+') == std::string::npos) continue;
+    if (border_width == 0) border_width = line.size();
+    assert(line.size() == border_width);
+    ++border_count;
+  }
+  assert(border_count == 3);
   assert(active.find("SP / FRAME") != std::string::npos);
   assert(active.find("CALL FRAME") != std::string::npos);
   assert(active.find("LIMIT") != std::string::npos);

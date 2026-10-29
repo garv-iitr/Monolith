@@ -568,6 +568,9 @@ AssemblyResult Assembler::assemble(const std::string& source,
                     result.data.push_back(word);
                     curDataAddr += 4;
                 }
+                result.sourceWords.push_back(
+                    {el.address, el.srcLine, el.srcText, el.section,
+                     el.section == "text" && el.kind == LineKind::INSTR});
                 listStream << listingLine(el.address, word, el.srcText) << "\n";
                 el.address += 4; // listing only
             }
@@ -584,6 +587,8 @@ AssemblyResult Assembler::assemble(const std::string& source,
                     result.data.push_back(0);
                     curDataAddr += 4;
                 }
+                result.sourceWords.push_back(
+                    {el.address + i * 4, el.srcLine, el.srcText, el.section, false});
             }
             listStream << listingLine(el.address, 0,
                 "                  ; .space " + std::to_string(el.spaceBytes) + " bytes") << "\n";
@@ -611,6 +616,9 @@ AssemblyResult Assembler::assemble(const std::string& source,
             }
             if (el.section == "text") { result.code.push_back(word); curTextAddr += 4; }
             else { result.data.push_back(word); curDataAddr += 4; }
+            result.sourceWords.push_back(
+                {el.address, el.srcLine, el.srcText, el.section,
+                 el.section == "text"});
             listStream << listingLine(el.address, word,
                 el.srcText + " ; [hi]") << "\n";
             continue;
@@ -636,6 +644,9 @@ AssemblyResult Assembler::assemble(const std::string& source,
             }
             if (el.section == "text") { result.code.push_back(word); curTextAddr += 4; }
             else { result.data.push_back(word); curDataAddr += 4; }
+            result.sourceWords.push_back(
+                {el.address, el.srcLine, el.srcText, el.section,
+                 el.section == "text"});
             listStream << listingLine(el.address, word,
                 el.srcText + " ; [lo]") << "\n";
             continue;
@@ -768,6 +779,9 @@ AssemblyResult Assembler::assemble(const std::string& source,
 
         if (el.section == "text") { result.code.push_back(word); curTextAddr += 4; }
         else { result.data.push_back(word); curDataAddr += 4; }
+        result.sourceWords.push_back(
+            {el.address, el.srcLine, el.srcText, el.section,
+             el.section == "text"});
         listStream << listingLine(el.address, word, el.srcText) << "\n";
     }
 

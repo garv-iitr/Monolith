@@ -51,8 +51,10 @@ void MemoryUnit::write_word(Word byte_addr, Word value) {
     throw RuntimeException{ExceptionCode::BAD_MEM_ACCESS,
                            static_cast<std::uint64_t>(byte_addr)};
   }
-  data_[static_cast<std::size_t>(
-      byte_addr / risc201::safety::MemoryMap::kWordBytes)] = value;
+  const std::size_t index = static_cast<std::size_t>(
+      byte_addr / risc201::safety::MemoryMap::kWordBytes);
+  if (journal_active_) journal_.push_back({index, data_[index]});
+  data_[index] = value;
 }
 
 // Instruction fetch port: translates program counter byte address to instruction word
@@ -61,6 +63,7 @@ Word MemoryUnit::fetch(Word byte_pc) const { return read_word(byte_pc); }
 // Sequential loader writing a block of words into memory starting at byte_addr
 void MemoryUnit::load_words(Word byte_addr, const std::vector<Word>& words) {
   if (words.empty()) return;
+  journal_.clear();
   if (byte_addr % risc201::safety::MemoryMap::kWordBytes != 0 ||
       byte_addr >= risc201::safety::MemoryMap::kAddressSpaceBytes ||
       byte_addr / risc201::safety::MemoryMap::kWordBytes >= data_.size() ||
@@ -74,8 +77,9 @@ void MemoryUnit::load_words(Word byte_addr, const std::vector<Word>& words) {
   for (std::size_t i = 0; i < words.size(); ++i) {
     write_word(byte_addr + static_cast<Word>(
                                 i * risc201::safety::MemoryMap::kWordBytes),
-               words[i]);
+                words[i]);
   }
+  journal_.clear();
 }
 
 // Clocks memory read/write cycles according to control signals:

@@ -17,7 +17,6 @@ std::string StackVisualizer::render(const std::vector<Word>& memory,
                                     int window,
                                     const std::vector<Word>& frame_boundaries) const {
   std::ostringstream os;
-  os << "        +------ STACK (word addresses) ------+\n";
 
   if (window < 1) window = 1;
   const bool valid_sp = sp >= limit_ && sp <= base_;
@@ -29,11 +28,16 @@ std::string StackVisualizer::render(const std::vector<Word>& memory,
   int bot = static_cast<int>(std::max<std::int64_t>(
       static_cast<std::int64_t>(limit_), center - (window / 2)));
 
-  os << "  SP word index: 0x" << std::hex << sp;
-  if (sp == base_) os << " (exclusive top; empty stack)";
-  if (!valid_sp) os << " (outside configured stack bounds)";
-  os << "\n";
-  os << "  bounds: LIMIT=0x" << limit_ << " BASE=0x" << base_ << "\n";
+  std::vector<std::string> rows;
+  std::ostringstream sp_line;
+  sp_line << "  SP word index: 0x" << std::hex << sp;
+  if (sp == base_) sp_line << " (exclusive top; empty stack)";
+  if (!valid_sp) sp_line << " (outside configured stack bounds)";
+  rows.push_back(sp_line.str());
+
+  std::ostringstream bounds_line;
+  bounds_line << "  bounds: LIMIT=0x" << std::hex << limit_ << " BASE=0x" << base_;
+  rows.push_back(bounds_line.str());
 
   for (int a = top; a >= bot; --a) {
     const bool is_memory_word =
@@ -41,28 +45,36 @@ std::string StackVisualizer::render(const std::vector<Word>& memory,
     const Word value =
         is_memory_word ? memory[static_cast<std::size_t>(a)] : Word{0};
 
-    os << "  0x" << std::hex << std::setw(4) << std::setfill('0') << a
-       << " | ";
+    std::ostringstream row;
+    row << "  0x" << std::hex << std::setw(4) << std::setfill('0') << a
+        << " | ";
     if (is_memory_word) {
-      os << "0x" << std::setw(8) << value;
+      row << "0x" << std::setw(8) << value;
     } else {
-      os << "   <top>";
+      row << "   <top>";
     }
-    os << " |";
+    row << " |";
 
-    if (static_cast<Word>(a) == sp) os << "  <- SP / FRAME";
-    if (static_cast<Word>(a) == fp && fp != 0) os << "  <- FP";
+    if (static_cast<Word>(a) == sp) row << "  <- SP / FRAME";
+    if (static_cast<Word>(a) == fp && fp != 0) row << "  <- FP";
     if (std::find(frame_boundaries.begin(), frame_boundaries.end(),
                   static_cast<Word>(a)) != frame_boundaries.end()) {
-      os << "  <- CALL FRAME";
+      row << "  <- CALL FRAME";
     }
-    if (static_cast<Word>(a) == limit_) os << "  <- LIMIT";
-    if (static_cast<Word>(a) == base_) os << "  <- BASE";
-    os << "\n";
+    if (static_cast<Word>(a) == limit_) row << "  <- LIMIT";
+    if (static_cast<Word>(a) == base_) row << "  <- BASE";
+    rows.push_back(row.str());
   }
 
-  os << "        +-----------------------------+\n";
-  os << std::dec;
+  const std::string title = "STACK (word addresses)";
+  std::size_t width = title.size();
+  for (const std::string& row : rows) width = std::max(width, row.size());
+  const std::string border = "  +" + std::string(width + 2, '-') + "+\n";
+  os << border << "  | " << title << std::string(width - title.size(), ' ') << " |\n";
+  os << border;
+  for (const std::string& row : rows)
+    os << "  | " << row << std::string(width - row.size(), ' ') << " |\n";
+  os << border;
   return os.str();
 }
 

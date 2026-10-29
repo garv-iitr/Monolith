@@ -15,6 +15,11 @@ namespace risc201::cu {
 // Emulated unified memory controller providing instruction fetch and data read/write ports
 class MemoryUnit {
  public:
+  struct WriteDelta {
+    std::size_t index;
+    Word previous;
+  };
+
   static constexpr std::size_t kDefaultWords =
       risc201::safety::MemoryMap::kAddressSpaceWords;
 
@@ -27,6 +32,10 @@ class MemoryUnit {
   // Returns total memory capacity in words
   std::size_t words() const { return data_.size(); }
   std::vector<Word> snapshot() const { return data_; }
+  std::size_t begin_journal();
+  std::vector<WriteDelta> take_journal(std::size_t mark);
+  void restore_journal(const std::vector<WriteDelta>& deltas);
+  void clear_journal() { journal_.clear(); journal_active_ = false; }
 
   // Verifies that a byte address is word-aligned (multiple of 4) and within bounds
   // present means word-aligned and inside the array

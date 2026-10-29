@@ -65,10 +65,10 @@ target_link_libraries(risc201-cu-demo PRIVATE risc201_cu)
 target_compile_options(risc201-cu-demo PRIVATE -Wall -Wextra)
 
 add_executable(risc201-sim simulator_core/main.cpp)
-target_link_libraries(risc201-sim PRIVATE risc201_cu risc201_alu)
+target_link_libraries(risc201-sim PRIVATE risc201_cu risc201_alu risc201_asm)
 target_compile_options(risc201-sim PRIVATE -Wall -Wextra)
 
-if(RISC201_TUI AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/simulator_core/ui/tui.cpp")
+if(RISC201_TUI)
   include(FetchContent)
   FetchContent_Declare(ftxui
     GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
@@ -76,6 +76,7 @@ if(RISC201_TUI AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/simulator_core/ui/tui.cpp
   set(FTXUI_BUILD_DOCS OFF CACHE BOOL "" FORCE)
   set(FTXUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(ftxui)
+  target_sources(risc201-sim PRIVATE simulator_core/ui/tui.cpp)
   target_link_libraries(risc201-sim PRIVATE
     ftxui::screen ftxui::dom ftxui::component)
   target_compile_definitions(risc201-sim PRIVATE RISC201_HAS_TUI=1)

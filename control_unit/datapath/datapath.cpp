@@ -53,6 +53,7 @@ Datapath::Datapath(std::size_t mem_words, bool runtime_safety)
 // Resets internal registers, general register file, memory array, and status flags
 void Datapath::reset() {
   regs.reset();
+  bus = SharedBus{};
   rf.reset();
   mem.reset();
   halted = false;
