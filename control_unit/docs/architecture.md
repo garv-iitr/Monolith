@@ -1,150 +1,149 @@
 # RISC201 Microprogrammed Control Unit
 
-Owner: Garv. Reference: Sarangi, *Basic Computer Architecture*, ch. 9
-(§9.4–9.8), plus the RISC201 ISA in `isa_spec/isa.h` / `ISA.md`.
+**Owner:** Garv (Module Lead)  
+**Scope:** Control Memory ROM, Micro-Sequencer, Micro-Op Cracking Engine, Horizontal & Vertical Decoders.
 
-This module implements the microprogrammed control unit and the microprogrammed
-datapath, in both a **horizontal** and a **vertical** encoding, under both a
-**4-stage** and a **6-stage** stage layout.
+---
 
-## 1. What a control word is
+## 1. Design Overview
 
-A control word is a bundle of signal lines issued for one micro-cycle:
+The RISC201 Control Unit implements **Method 3: Hybrid $\mu$-Op Cracking** in the **OF (Decode)** stage of the processor pipeline. It unifies single-cycle RISC execution with multi-cycle microcode execution without stalling the pipeline on simple instructions:
 
-| Field | Meaning |
-| --- | --- |
-| `write_src` | the single internal register driving the **write bus** |
-| `read_mask` | every internal register latching the **read bus** |
-| `transfer_sel` | the transfer mux: `write_bus` / `muimm` / `muadder` |
-| `alu_op`, `reg_op`, `mem_op`, `fpu_op`, `memchk_op` | functional-unit args |
-| `set_flags`, `fpu_set_fcc` | commit flags |
-| `fetch_ir` | `mloadIR`: `ir <- instruction_memory[pc]` |
-| `next_addr`, `jump_target` | micro-sequencer control |
-| `halt` | stop the machine |
+- **Fast-Path (Single-cycle ops):** Instructions like `ADD`, `SUB`, `AND`, `LD`, `ST`, `BNE` perform a 1-cycle direct ROM crack and immediately emit stage control signals down the pipeline.
+- **Micro-Sequencer Path (Complex ops):** Instructions like `CALL`, `RET`, `SWAP`, `BNDCHK` trigger the $\mu\text{Sequencer}$. The Control Unit asserts `freeze_if_of = true` (stalling IF and OF) and steps through internal microcode routines, emitting a sequence of $\mu$-ops into the EX stage until completed.
 
-This is `ControlSignals` (`common/control_signals.h`). Both encodings converge
-on it, so the datapath and execute unit are shared.
+---
 
-## 2. Shared bus datapath (Sarangi §9.5–9.7)
+## 2. Horizontal vs. Vertical Dual-Mode Architecture
+
+The unit supports two user-selectable Control Memory (ROM) encodings:
 
 ```
- registers --(write bus)--> [transfer mux] --(read bus)--> registers
-                              ^       ^
-                           muimm   micro-adder (write bus + muimm)
+                       ┌───────────────────────────────┐
+                       │   Instruction Word (from IF)  │
+                       └──────────────┬────────────────┘
+                                      │ Opcode
+                                      ▼
+                       ┌───────────────────────────────┐
+                       │  Control Memory ROM (Entry)   │
+                       └──────┬─────────────────┬──────┘
+                              │                 │
+         [HORIZONTAL MODE]    │                 │    [VERTICAL MODE]
+         77-bit Wide Word     │                 │    45-bit Encoded Word
+                              ▼                 ▼
+                       ┌─────────────┐   ┌─────────────┐
+                       │ Direct Wire │   │ µ-Decoder   │
+                       │ Pass-through│   │ Circuitry   │
+                       └──────┬──────┘   └──────┬──────┘
+                              │                 │
+                              └────────┬────────┘
+                                       ▼
+                       ┌───────────────────────────────┐
+                       │ Pipeline Control Signals      │
+                       │ (ExControl, ChkControl, ...)  │
+                       └───────────────────────────────┘
 ```
 
-* `common/shared_bus.h` — write bus, micro-adder, `isMBranch` (write bus ==
-  muimm), transfer mux, read bus.
-* `common/mux.h` — parameterised `Mux<T,N>` and one-hot `Decoder<N>`.
-* `common/internal_registers.h/.cpp` — all 30 microcode-visible registers:
-  Sarangi's 19 (Table 9.7) plus the FPU (`fpSrc/fpData/fpVal/fA/fB/fpuResult/fcc`)
-  and memory-check (`memChkAddr/memChkStatus`) extensions. `get`/`set` give the
-  width-agnostic access used by `mmov`.
+| Parameter | Horizontal Control Unit | Vertical Control Unit |
+| :--- | :--- | :--- |
+| **Word Width** | **77 bits** | **45 bits** |
+| **Storage Footprint** | Baseline ($1.0\times$) | **$41.6\%$ reduction** ($0.584\times$) |
+| **Decoding Latency** | $T_{dec} = 0\text{ ns}$ (Direct wires) | $T_{dec} > 0\text{ ns}$ (Combinational gate delay) |
+| **Target Application** | Maximum clock frequency | Minimum silicon area |
 
-### Functional units
+---
 
-This module executes the units it owns; for the others it only emits args on
-the bus (the contract lives in `common/control_signals.h`):
+## 3. Stage-Decoupled Control Signal Bundles
 
-| Unit | File | Owner |
-| --- | --- | --- |
-| decode | `datapath/decode_unit.h` | control unit (Garv) |
-| register file | `datapath/register_file_unit.h` | control unit (Garv) |
-| memory | `datapath/memory_unit.h/.cpp` | control unit (Garv) |
-| ALU | -- (`AluOp` args) | Atharva (`alu/`) |
-| FPU | -- (`FpuOp` args) | Atharva |
-| memory check | -- (`MemChkOp` args) | Paraas (`memory_safety/`) |
+Rather than a monolithic bus, signals are bundled by pipeline stage and propagated across inter-stage pipeline latches:
 
-The ALU/FPU/memory-check units latch their results from the shared internal
-registers (`A/B/aluResult`, `fpSrc/fpData/...`, `memChkAddr/memChkStatus`) when
-their implementations are integrated.
+```cpp
+struct ExControl {
+    ALUOp       alu_op          = ALUOp::NONE;
+    OperandASrc operand_a_src   = OperandASrc::RS1;
+    OperandBSrc operand_b_src   = OperandBSrc::RS2;
+    bool        set_flags       = false;
+    BranchCond  branch_cond     = BranchCond::NONE;
+};
 
-`datapath/datapath.h/.cpp` is the **execute unit**: one `execute()` is one
-micro-cycle. Inputs latched this cycle are visible to the units in the *same*
-cycle, which is what lets a microinstruction fuse a transfer with a
-functional-unit op (e.g. `mmov B, regVal, <add>`).
+struct ChkControl {
+    bool        memchk_enable   = false;  // Active in 6-stage pipeline
+    ChkMode     chk_mode        = ChkMode::STACK_BOUNDS;
+};
 
-## 3. Microinstructions (Sarangi §9.6)
+struct MaControl {
+    bool        mem_read        = false;
+    bool        mem_write       = false;
+    MemWidth    width           = MemWidth::WORD;
+};
 
-The eight microinstructions are `MicroOp` in `isa_spec/isa.h`:
-`mloadIR, mdecode, mswitch, mmov, mmovi, madd, mbeq, mb`.
-Preamble (shared by every instruction):
-
-```
-mloadIR          ; ir <- [pc]
-mdecode          ; field registers populate
-madd pc, 4       ; pc <- pc + 4
-mswitch          ; dispatch on the opcode
+struct WbControl {
+    bool        reg_write_en    = false;
+    RegWriteSrc reg_write_src   = RegWriteSrc::ALU_OUT;
+    uint8_t     dest_reg        = 0;
+};
 ```
 
-## 4. Authoring once, encoding twice
+---
 
-Microcode is written once in a symbolic micro-assembly language
-(`microcode/micro_asm.h`) and placed by `microcode/routine_layout.h`. The
-microprogram itself is `microcode/microcode_program.cpp` — one routine per
-RISC201 opcode (all 34). Two assemblers translate the same listing:
-
-* `microcode/h_assembler.cpp` -> `ControlMemory<HorizontalMicroWord>` (signals
-  embedded; no decode stage; `horizontal/h_codec.h` is a wire-through).
-* `microcode/v_assembler.cpp` -> `ControlMemory<VerticalMicroWord>` (encoded;
-  `vertical/v_decoder.cpp` reconstructs the signals).
-
-Both feed the shared `common/micro_control_unit.h`, which owns the microPC,
-the micro-fetch mux and the `switch` unit (`common/micro_sequencer.h`).
-
-### Encodings
-
-* Horizontal (Sarangi fig. 9.26 scaled to 30 internal registers): 77 bits — 45
-  control signals + 12-bit imm + 10-bit target + 10-bit args. Larger storage, no decoder.
-* Vertical (Sarangi fig. 9.24): 45 bits — `type[3] src[5] dest[5] imm[12]
-  target[10] args[10]`. Smaller storage, needs the micro-decoder.
-
-## 5. 4-stage vs 6-stage
-
-A micro-step is tagged with a `StageClass`; the concrete stage name comes from
-`StageLayout` (`common/control_signals.h`):
-
-| StageClass | 4-stage | 6-stage |
-| --- | --- | --- |
-| FETCH / DECODE / SEQUENCE | IF/OF | IF / OF |
-| EXECUTE | EX | EX |
-| CHECK | MA | **MEMCHK** |
-| MEMORY | MA | MA |
-| WRITEBACK | RW | RW |
-
-So the 4-stage layout merges IF with OF; the 6-stage layout exposes a dedicated
-**MEMCHK** stage that validates the effective address (bounds + word alignment)
-before the memory access. The checker itself is Paraas's memory-check unit; the
-microcode issues `MemChkOp::CHECK` args and reads the latched `memChkStatus`.
-
-## 6. Build and run
+## 4. Micro-Sequencer & Cracking Protocol
 
 ```
-cmake -S . -B build
-cmake --build build --target risc201-cu-demo
-./build/risc201-cu-demo
+State Machine Cycle:
+1. Decode Opcode at `IF/OF` latch.
+2. If single-cycle:
+   - Emit signals -> `OF/EX` latch.
+   - Advance `PC`, fetch next instruction.
+3. If multi-cycle (`CALL`, `RET`, `SWAP`, `BNDCHK`):
+   - Assert `freeze_if_of = true`.
+   - microPC <- EntryPoint[Opcode].
+   - Loop:
+       - Emit current µ-op signals -> `OF/EX` latch.
+       - microPC <- NextMicroAddr(microPC).
+       - If end of routine: de-assert `freeze_if_of`, advance `PC`.
 ```
 
-The demo checks, in every configuration, that all 34 opcodes have a microcode
-routine and an entry point in both control memories, and runs programs that
-exercise this module's datapath (immediate/register moves, flag-driven
-branches, call/ret, illegal-opcode halt) through all four configurations,
-printing a per-micro-cycle trace for the first one and self-checking that all
-four reach identical architectural state.
+### Multi-Op Routine Cycles:
+- **`CALL` (2 µ-ops):**
+  1. `ALU: SP = SP - 4`, `MEMCHK: verify(SP)`
+  2. `MEM: [SP] = PC_return`, `PC = target`
+- **`RET` (2 µ-ops):**
+  1. `MEM: PC_return = [SP]`, `MEMCHK: verify(SP)`
+  2. `ALU: SP = SP + 4`, `PC = PC_return`
+- **`SWAP rA, rB` (3 µ-ops):**
+  1. `TEMP = rA`
+  2. `rA = rB`
+  3. `rB = TEMP`
+- **`BNDCHK rA, rLow, rHigh` (2 µ-ops):**
+  1. `CMP rA, rLow` -> fault if `<`
+  2. `CMP rA, rHigh` -> fault if `>`
 
-## 7. Assumptions / open items
+---
 
-1. **ISA.md is canonical.** `isa_spec/isa.h` was finished to match `ISA.md`
-   (6-bit opcodes, formats 1–8). `simulator_core`'s decoder and `tests/` still
-   use the older SimpleRISC field layout and need a follow-up migration.
-2. **Memory is byte-addressed, word-granular.** PC advances by 4, branch
-   offsets are `<< 2`, load/store addresses are byte addresses; misaligned or
-   out-of-range accesses fault (`memchk` in 6-stage, the memory unit otherwise).
-3. **CALL/RET use the full-descending stack** (`sp = r14`), per `ISA.md`
-   ("Push PC" / "Pop PC") and Sarangi Examples 132/133 — not a dedicated `ra`.
-4. **Instruction fetch is one cycle** (`mloadIR` reads the instruction memory
-   directly), matching the book's microinstruction count; data access goes
-   through `mar`/`ldResult`.
-5. `BNDCHK` performs the same presence check as the 6-stage MEMCHK stage.
-6. `PUSH/POP/SPUSH/SPOP` are assembler macros (per `ISA.md`), not opcodes, so
-   they have no microcode routine.
+## 5. Module Interface (`control_unit.h`)
+
+```cpp
+namespace risc201::cu {
+
+class ControlUnit {
+public:
+    virtual ~ControlUnit() = default;
+    
+    // Step decode logic for the current cycle
+    virtual void decode_cycle(Word instruction, const Flags& flags) = 0;
+    
+    // Status flags queried by the CPU core
+    virtual bool is_cracking() const = 0;
+    virtual bool freeze_pipeline() const = 0;
+    
+    // Stage control signals emitted into the OF/EX latch
+    virtual const ExControl&  ex_signals()  const = 0;
+    virtual const ChkControl& chk_signals() const = 0;
+    virtual const MaControl&  ma_signals()  const = 0;
+    virtual const WbControl&  wb_signals()  const = 0;
+    
+    virtual void reset() = 0;
+};
+
+} // namespace risc201::cu
+```
