@@ -2,21 +2,37 @@
 #include "datapath/memory_unit.h"
 
 #include <algorithm>
+#include <stdexcept>
 
 #include "simulator_core/core/exception.h"
 
 namespace risc201::cu {
+namespace {
 
-// Allocates memory word vector initialized to zero
-MemoryUnit::MemoryUnit(std::size_t words) : data_(words, Word{0}) {}
+std::size_t checked_word_count(std::size_t words) {
+  if (words > risc201::safety::MemoryMap::kAddressSpaceWords) {
+    throw std::invalid_argument("memory exceeds the RISC201 address map");
+  }
+  return words;
+}
+
+}  // namespace
+
+MemoryUnit::MemoryUnit(std::size_t words)
+    : data_(checked_word_count(words), Word{0}) {}
 
 // Clears all memory locations to 0
 void MemoryUnit::reset() { std::fill(data_.begin(), data_.end(), Word{0}); }
 
 // Checks 4-byte word alignment and validates address is within the allocated memory bounds
 bool MemoryUnit::present(Word byte_addr) const {
-  if (byte_addr % 4 != 0) return false;
-  return static_cast<std::size_t>(byte_addr / 4) < data_.size();
+  if (byte_addr % risc201::safety::MemoryMap::kWordBytes != 0 ||
+      byte_addr >= risc201::safety::MemoryMap::kAddressSpaceBytes) {
+    return false;
+  }
+  return static_cast<std::uint64_t>(byte_addr /
+                                    risc201::safety::MemoryMap::kWordBytes) <
+         data_.size();
 }
 
 // Performs a 32-bit word read; triggers an architectural memory fault exception if invalid
@@ -25,7 +41,8 @@ Word MemoryUnit::read_word(Word byte_addr) const {
     throw RuntimeException{ExceptionCode::BAD_MEM_ACCESS,
                            static_cast<std::uint64_t>(byte_addr)};
   }
-  return data_[static_cast<std::size_t>(byte_addr / 4)];
+  return data_[static_cast<std::size_t>(
+      byte_addr / risc201::safety::MemoryMap::kWordBytes)];
 }
 
 // Performs a 32-bit word write; triggers an architectural memory fault exception if invalid
@@ -34,7 +51,8 @@ void MemoryUnit::write_word(Word byte_addr, Word value) {
     throw RuntimeException{ExceptionCode::BAD_MEM_ACCESS,
                            static_cast<std::uint64_t>(byte_addr)};
   }
-  data_[static_cast<std::size_t>(byte_addr / 4)] = value;
+  data_[static_cast<std::size_t>(
+      byte_addr / risc201::safety::MemoryMap::kWordBytes)] = value;
 }
 
 // Instruction fetch port: translates program counter byte address to instruction word
@@ -42,8 +60,21 @@ Word MemoryUnit::fetch(Word byte_pc) const { return read_word(byte_pc); }
 
 // Sequential loader writing a block of words into memory starting at byte_addr
 void MemoryUnit::load_words(Word byte_addr, const std::vector<Word>& words) {
+  if (words.empty()) return;
+  if (byte_addr % risc201::safety::MemoryMap::kWordBytes != 0 ||
+      byte_addr >= risc201::safety::MemoryMap::kAddressSpaceBytes ||
+      byte_addr / risc201::safety::MemoryMap::kWordBytes >= data_.size() ||
+      words.size() >
+          data_.size() - static_cast<std::size_t>(
+                             byte_addr /
+                             risc201::safety::MemoryMap::kWordBytes)) {
+    throw RuntimeException{ExceptionCode::BAD_MEM_ACCESS,
+                           static_cast<std::uint64_t>(byte_addr)};
+  }
   for (std::size_t i = 0; i < words.size(); ++i) {
-    write_word(byte_addr + static_cast<Word>(i * 4), words[i]);
+    write_word(byte_addr + static_cast<Word>(
+                                i * risc201::safety::MemoryMap::kWordBytes),
+               words[i]);
   }
 }
 

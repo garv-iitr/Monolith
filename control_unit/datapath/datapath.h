@@ -11,6 +11,7 @@
 #include "datapath/memory_unit.h"
 #include "datapath/register_file_unit.h"
 #include "isa_spec/isa.h"
+#include "memory_safety/stack_guard.h"
 
 namespace risc201::cu {
 
@@ -20,16 +21,17 @@ class Datapath {
   InternalRegisters regs;   // Active microarchitectural register bank
   SharedBus bus;            // Internal transfer bus connecting registers and multiplexers
 
-  DecodeUnit decode;        // Combinational instruction decode logic
-  RegisterFileUnit rf;      // 16-entry general purpose register file
-  MemoryUnit mem;           // Main unified instruction and data memory
+  DecodeUnit decode;
+  RegisterFileUnit rf;
+  MemoryUnit mem;
+  risc201::safety::StackGuard stack_guard;
 
-  StageLayout layout = StageLayout::SIX_STAGE; // Active pipeline structure configuration
-  bool halted = false;                         // Processor halt latch
-  const char* halt_reason = "";                // Diagnostic explanation if execution halted or faulted
+  StageLayout layout = StageLayout::SIX_STAGE;
+  bool halted = false;
+  const char* halt_reason = "";
 
-  // Constructs datapath with specified data/instruction memory capacity (in words)
-  explicit Datapath(std::size_t mem_words = MemoryUnit::kDefaultWords);
+  explicit Datapath(std::size_t mem_words = MemoryUnit::kDefaultWords,
+                    bool runtime_safety = false);
 
   // Clears internal registers, register file, memory, and execution flags
   void reset();
@@ -41,7 +43,8 @@ class Datapath {
   const char* current_stage_name() const { return stage_name(layout, last_stage); }
 
  private:
-  StageClass last_stage = StageClass::FETCH; // Tracks most recently executed stage classification
+  StageClass last_stage = StageClass::FETCH;
+  bool runtime_safety_ = false;
 };
 
 }

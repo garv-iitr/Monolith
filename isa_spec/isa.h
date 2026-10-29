@@ -1,6 +1,7 @@
 #ifndef RISC201_ISA_H
 #define RISC201_ISA_H
 
+#include <cstddef>
 #include <cstdint>
 
 #ifndef RISC201_WORD_BITS
