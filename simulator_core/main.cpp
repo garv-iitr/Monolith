@@ -9,6 +9,9 @@
 
 #include "isa_spec/isa.h"
 #include "simulator_core/core/debugger.h"
+#ifdef RISC201_HAS_TUI
+#include "simulator_core/ui/tui.h"
+#endif
 
 namespace {
 
@@ -169,18 +172,25 @@ void print_help() {
 int main(int argc, char* argv[]) {
   risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE;
   risc201::ControlEncoding encoding = risc201::ControlEncoding::HORIZONTAL;
+  bool use_tui = false;
 
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
     if (arg == "--help" || arg == "-h") {
-      std::printf("Usage: risc201-sim [--stages 4|6] [--encoding horizontal|vertical] [--help|-h]\n"
+      std::printf("Usage: risc201-sim [--tui|--headless] [--stages 4|6] [--encoding horizontal|vertical] [--help|-h]\n"
+                  "  --tui       Launch the full-screen debugger (requires RISC201_TUI=ON)\n"
+                  "  --headless  Launch the line-based debugger\n"
                   "  --stages    Select the 4-stage or 6-stage microprogram (default: 6)\n"
                   "  --encoding  Select horizontal or vertical control encoding (default: horizontal)\n\n"
                   "Commands:\n");
       print_help();
       return 0;
     }
-    if (arg == "--stages" && i + 1 < argc) {
+    if (arg == "--tui") {
+      use_tui = true;
+    } else if (arg == "--headless") {
+      use_tui = false;
+    } else if (arg == "--stages" && i + 1 < argc) {
       const std::string value = argv[++i];
       if (value == "4") {
         layout = risc201::cu::StageLayout::FOUR_STAGE;
@@ -207,6 +217,17 @@ int main(int argc, char* argv[]) {
   }
 
   risc201::Debugger dbg(kMemWords, layout, encoding);
+
+  if (use_tui) {
+#ifdef RISC201_HAS_TUI
+    return risc201::run_tui(
+        dbg, encoding == risc201::ControlEncoding::VERTICAL,
+        static_cast<unsigned>(layout));
+#else
+    std::printf("This build has no TUI. Reconfigure with -DRISC201_TUI=ON.\n");
+    return 1;
+#endif
+  }
 
   std::printf("RISC201 debugger (%s, %u-stage). Type 'help' for commands.\n",
               encoding == risc201::ControlEncoding::HORIZONTAL ? "horizontal" : "vertical",
