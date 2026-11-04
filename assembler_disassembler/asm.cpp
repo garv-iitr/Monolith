@@ -41,14 +41,14 @@ void to_upper(string &s) {
     for (char &c : s) c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
 }
 
-// checks if register is valid 
-bool is_reg(const string &s) {
+// checks if general-purpose register is valid (R0-R15, SP, RA)
+bool is_gpr(const string &s) {
     if (s.empty()) return false;
     string upper_s = s;
     to_upper(upper_s);
     if (upper_s == "SP" || upper_s == "RA") return true;
     
-    if (upper_s.length() > 1 && (upper_s[0] == 'R' || upper_s[0] == 'F')) {
+    if (upper_s.length() > 1 && upper_s[0] == 'R') {
         string num_part = upper_s.substr(1);
         for (char c : num_part) {
             if (!isdigit(static_cast<unsigned char>(c))) return false;
@@ -63,48 +63,148 @@ bool is_reg(const string &s) {
     return false;
 }
 
-// Parses a register
-uint32_t parse_reg(const string &s, uint32_t line_number) {
+// checks if floating-point register is valid (F0-F15)
+bool is_fpr(const string &s) {
+    if (s.empty()) return false;
+    string upper_s = s;
+    to_upper(upper_s);
+    
+    if (upper_s.length() > 1 && upper_s[0] == 'F') {
+        string num_part = upper_s.substr(1);
+        for (char c : num_part) {
+            if (!isdigit(static_cast<unsigned char>(c))) return false;
+        }
+        try {
+            int reg_num = stoi(num_part);
+            return (reg_num >= 0 && reg_num <= 15);
+        } catch (...) {
+            return false;
+        }
+    }
+    return false;
+}
+
+// checks if register is valid
+bool is_reg(const string &s) {
+    return is_gpr(s) || is_fpr(s);
+}
+
+// Parses a general-purpose register
+uint32_t parse_gpr(const string &s, uint32_t line_number) {
     string upper_s = s;
     to_upper(upper_s);
     
     if (upper_s == "SP") return 14;
     if (upper_s == "RA") return 15;
     
-    if (upper_s.length() > 1 && (upper_s[0] == 'R' || upper_s[0] == 'F')) {
+    if (upper_s.length() > 1 && upper_s[0] == 'R') {
         string num_part = upper_s.substr(1);
         for (char c : num_part) {
             if (!isdigit(static_cast<unsigned char>(c))) {
-                cerr << "Error line " << line_number << ": Invalid register format '" << s << "'.\n";
+                cerr << "Error line " << line_number << ": Invalid GPR format '" << s << "'.\n";
                 exit(1);
             }
         }
         try {
             int reg_num = stoi(num_part);
             if (reg_num < 0 || reg_num > 15) {
-                cerr << "Error line " << line_number << ": Register '" << s << "' out of bounds (0-15).\n";
+                cerr << "Error line " << line_number << ": GPR '" << s << "' out of bounds (0-15).\n";
                 exit(1);
             }
             return static_cast<uint32_t>(reg_num);
         } catch (...) {
-            cerr << "Error line " << line_number << ": Invalid register format '" << s << "'.\n";
+            cerr << "Error line " << line_number << ": Invalid GPR format '" << s << "'.\n";
             exit(1);
         }
     }
+    if (is_fpr(s)) {
+        cerr << "Error line " << line_number << ": Expected GPR (R0-R15, SP, RA), got FPR '" << s << "'.\n";
+        exit(1);
+    }
+    cerr << "Error line " << line_number << ": Expected GPR register, got '" << s << "'.\n";
+    exit(1);
+}
+
+// Parses a floating-point register
+uint32_t parse_fpr(const string &s, uint32_t line_number) {
+    string upper_s = s;
+    to_upper(upper_s);
+    
+    if (upper_s.length() > 1 && upper_s[0] == 'F') {
+        string num_part = upper_s.substr(1);
+        for (char c : num_part) {
+            if (!isdigit(static_cast<unsigned char>(c))) {
+                cerr << "Error line " << line_number << ": Invalid FPR format '" << s << "'.\n";
+                exit(1);
+            }
+        }
+        try {
+            int reg_num = stoi(num_part);
+            if (reg_num < 0 || reg_num > 15) {
+                cerr << "Error line " << line_number << ": FPR '" << s << "' out of bounds (0-15).\n";
+                exit(1);
+            }
+            return static_cast<uint32_t>(reg_num);
+        } catch (...) {
+            cerr << "Error line " << line_number << ": Invalid FPR format '" << s << "'.\n";
+            exit(1);
+        }
+    }
+    if (is_gpr(s)) {
+        cerr << "Error line " << line_number << ": Expected FPR (F0-F15), got GPR '" << s << "'.\n";
+        exit(1);
+    }
+    cerr << "Error line " << line_number << ": Expected FPR register, got '" << s << "'.\n";
+    exit(1);
+}
+
+// Parses a register
+uint32_t parse_reg(const string &s, uint32_t line_number) {
+    if (is_gpr(s)) return parse_gpr(s, line_number);
+    if (is_fpr(s)) return parse_fpr(s, line_number);
     cerr << "Error line " << line_number << ": Expected register, got '" << s << "'.\n";
     exit(1);
 }
 
-// Parsing of immediate (supports optional leading '#')
+// Parsing of immediate (supports optional leading '#', decimal, 0x hex, and 0b binary)
 int32_t parse_int(string s, uint32_t line_number) {
     if (!s.empty() && s[0] == '#') s = s.substr(1);
+    if (s.empty()) {
+        cerr << "Syntax Error line " << line_number << ": Empty numeric immediate.\n";
+        exit(1);
+    }
     try {
         size_t idx = 0;
-        int64_t val = stoll(s, &idx, 0);
-        if (idx != s.length()) {
-            cerr << "Syntax Error line " << line_number << ": Trailing characters in numeric immediate '" << s << "'.\n";
-            exit(1);
+        string num_part = s;
+        bool neg = false;
+        if (!num_part.empty() && num_part[0] == '-') {
+            neg = true;
+            num_part = num_part.substr(1);
+        } else if (!num_part.empty() && num_part[0] == '+') {
+            num_part = num_part.substr(1);
         }
+        
+        int64_t val = 0;
+        if (num_part.size() >= 2 && num_part[0] == '0' && (num_part[1] == 'x' || num_part[1] == 'X')) {
+            val = stoll(num_part.substr(2), &idx, 16);
+            if (idx != num_part.size() - 2) {
+                cerr << "Syntax Error line " << line_number << ": Trailing characters in hex immediate '" << s << "'.\n";
+                exit(1);
+            }
+        } else if (num_part.size() >= 2 && num_part[0] == '0' && (num_part[1] == 'b' || num_part[1] == 'B')) {
+            val = stoll(num_part.substr(2), &idx, 2);
+            if (idx != num_part.size() - 2) {
+                cerr << "Syntax Error line " << line_number << ": Trailing characters in binary immediate '" << s << "'.\n";
+                exit(1);
+            }
+        } else {
+            val = stoll(num_part, &idx, 10);
+            if (idx != num_part.size()) {
+                cerr << "Syntax Error line " << line_number << ": Trailing characters in numeric immediate '" << s << "'.\n";
+                exit(1);
+            }
+        }
+        if (neg) val = -val;
         return static_cast<int32_t>(val); 
     } catch (...) {
         cerr << "Syntax Error line " << line_number << ": Expected numeric immediate, got '" << s << "'.\n";
@@ -112,11 +212,21 @@ int32_t parse_int(string s, uint32_t line_number) {
     }
 }
 
-// take lower 16 bits
+// validates range and takes lower 16 bits
 uint16_t validate_and_mask_imm(int32_t val, uint32_t mode, const string &op, uint32_t line_number) {
-    (void)mode;
-    (void)op;
-    (void)line_number;
+    if (mode == 1) { // signed 16-bit
+        if (val < -32768 || val > 32767) {
+            cerr << "Error line " << line_number << ": " << op 
+                 << ": signed imm16 out of range: " << val << " (must be between -32768 and 32767).\n";
+            exit(1);
+        }
+    } else if (mode == 2 || mode == 3) { // unsigned or high 16-bit
+        if (val < 0 || val > 65535) {
+            cerr << "Error line " << line_number << ": " << op 
+                 << ": unsigned imm16 out of range: " << val << " (must be between 0 and 65535).\n";
+            exit(1);
+        }
+    }
     return static_cast<uint16_t>(val & 0xFFFF);
 }
 
@@ -188,6 +298,11 @@ int main(int argc, char* argv[]) {
     // PASS 1: Macro Expansion and Label Mapping
     while (getline(infile, line)) {
         line_number++;
+        // Remove line-start comments first
+        size_t first_non_space = line.find_first_not_of(" \t\r\n");
+        if (first_non_space != string::npos && line[first_non_space] == '#') {
+            line = "";
+        }
         // Remove comments (supports ';', '@', '//', and '#' comments while preserving '#imm')
         size_t comment_pos = string::npos;
         for (size_t i = 0; i < line.size(); ++i) {
@@ -260,6 +375,18 @@ int main(int argc, char* argv[]) {
                 cerr << "Error line " << line_number << ": " << mnemonic << " requires exactly 1 register operand.\n"; 
                 return 1; 
             }
+            bool is_fp_macro = (mnemonic == "FPUSH" || mnemonic == "FPOP" || mnemonic == "SFPUSH" || mnemonic == "SFPOP");
+            if (is_fp_macro) {
+                if (!is_fpr(tokens[1])) {
+                    cerr << "Error line " << line_number << ": " << mnemonic << " requires an FPR (F0-F15), got '" << tokens[1] << "'.\n";
+                    return 1;
+                }
+            } else {
+                if (!is_gpr(tokens[1])) {
+                    cerr << "Error line " << line_number << ": " << mnemonic << " requires a GPR (R0-R15, SP, RA), got '" << tokens[1] << "'.\n";
+                    return 1;
+                }
+            }
             if (mnemonic == "PUSH") {
                 clean_instructions.push_back({line_number, {"SUBI", "SP", "SP", "4"}});
                 clean_instructions.push_back({line_number, {"ST", tokens[1], "0", "SP"}});
@@ -299,16 +426,15 @@ int main(int argc, char* argv[]) {
             }
         } else if (mnemonic == "LI") {
             if (tokens.size() != 3) { 
-                cerr << "Error line " << line_number << ": LI requires 2 operands (register, 32-bit immediate).\n"; 
+                cerr << "Error line " << line_number << ": LI requires 2 operands (register, 32-bit immediate or label).\n"; 
                 return 1; 
             }
-            int32_t val    = parse_int(tokens[2], line_number);
-            uint32_t uval  = static_cast<uint32_t>(val);
-            uint16_t lower = static_cast<uint16_t>(uval & 0xFFFF); 
-            uint16_t upper = static_cast<uint16_t>((uval >> 16) & 0xFFFF);
-            
-            clean_instructions.push_back({line_number, {"MOVH", tokens[1], to_string(upper)}});
-            clean_instructions.push_back({line_number, {"ORU", tokens[1], tokens[1], to_string(lower)}});
+            if (!is_gpr(tokens[1])) {
+                cerr << "Error line " << line_number << ": LI requires a destination GPR (R0-R15, SP, RA), got '" << tokens[1] << "'.\n";
+                return 1;
+            }
+            clean_instructions.push_back({line_number, {"LI_HI", tokens[1], tokens[2]}});
+            clean_instructions.push_back({line_number, {"LI_LO", tokens[1], tokens[2]}});
             address_counter += 8;
         } else {
             clean_instructions.push_back({line_number, tokens});
@@ -332,6 +458,38 @@ int main(int argc, char* argv[]) {
         string raw_mnemonic = tokens[0];
         to_upper(raw_mnemonic);
         
+        if (raw_mnemonic == "LI_HI" || raw_mnemonic == "LI_LO") {
+            uint32_t rd = parse_gpr(tokens[1], line_num);
+            string target_token = tokens[2];
+            string upper_target = target_token;
+            to_upper(upper_target);
+            
+            uint32_t val32 = 0;
+            if (label_map.count(upper_target)) {
+                val32 = label_map.at(upper_target);
+            } else {
+                val32 = static_cast<uint32_t>(parse_int(target_token, line_num));
+            }
+            
+            uint32_t instr_32 = 0;
+            if (raw_mnemonic == "LI_HI") {
+                uint32_t hi16 = (val32 >> 16) & 0xFFFF;
+                instr_32 = (0x10 << 26) | (3 << 24) | (rd << 20) | hi16;
+            } else {
+                uint32_t lo16 = val32 & 0xFFFF;
+                instr_32 = (0x07 << 26) | (2 << 24) | (rd << 20) | (rd << 16) | lo16;
+            }
+            
+            if (as_hex) {
+                outfile << uppercase << setfill('0') << setw(8) << hex << instr_32 << "\n";
+            } else {
+                for (int bit = 31; bit >= 0; --bit) outfile << ((instr_32 >> bit) & 1);
+                outfile << "\n";
+            }
+            current_address += 4;
+            continue;
+        }
+
         uint32_t opcode = 0;
         uint32_t mode   = 0;
         string base_op  = raw_mnemonic;
@@ -383,12 +541,12 @@ int main(int argc, char* argv[]) {
                 return 1; 
             }
             
-            uint32_t rd  = parse_reg(tokens[1], line_num);
-            uint32_t rs1 = parse_reg(tokens[2], line_num);
+            uint32_t rd  = parse_gpr(tokens[1], line_num);
+            uint32_t rs1 = parse_gpr(tokens[2], line_num);
             uint32_t rs2_or_imm = 0;
             
             if (mode == 0) {
-                rs2_or_imm = parse_reg(tokens[3], line_num);
+                rs2_or_imm = parse_gpr(tokens[3], line_num);
             } else {
                 int32_t val = parse_int(tokens[3], line_num);
                 rs2_or_imm = validate_and_mask_imm(val, mode, base_op, line_num);
@@ -406,20 +564,30 @@ int main(int argc, char* argv[]) {
                 return 1; 
             }
             
-            uint32_t r_target = parse_reg(tokens[1], line_num);
-            uint32_t last_val = 0;
-            
-            if (mode == 0) {
-                last_val = parse_reg(tokens[2], line_num);
-            } else {
-                int32_t val = parse_int(tokens[2], line_num);
-                last_val = validate_and_mask_imm(val, mode, base_op, line_num);
-            }
-            
             if (base_op == "CMP") {
-                instr_32 = (opcode << 26) | (mode << 24) | (0 << 20) | (r_target << 16) | 
+                uint32_t rs1 = parse_gpr(tokens[1], line_num);
+                uint32_t last_val = 0;
+                
+                if (mode == 0) {
+                    last_val = parse_gpr(tokens[2], line_num);
+                } else {
+                    int32_t val = parse_int(tokens[2], line_num);
+                    last_val = validate_and_mask_imm(val, mode, base_op, line_num);
+                }
+                
+                instr_32 = (opcode << 26) | (mode << 24) | (0 << 20) | (rs1 << 16) | 
                            (mode == 0 ? (last_val << 12) : last_val);
             } else {
+                uint32_t r_target = parse_gpr(tokens[1], line_num);
+                uint32_t last_val = 0;
+                
+                if (mode == 0) {
+                    last_val = parse_gpr(tokens[2], line_num);
+                } else {
+                    int32_t val = parse_int(tokens[2], line_num);
+                    last_val = validate_and_mask_imm(val, mode, base_op, line_num);
+                }
+                
                 instr_32 = (opcode << 26) | (mode << 24) | (r_target << 20) | (0 << 16) | 
                            (mode == 0 ? (last_val << 12) : last_val);
             }
@@ -434,7 +602,7 @@ int main(int argc, char* argv[]) {
                     cerr << "Error line " << line_num << ": BNDCHK requires 2 operands (rs1, signed imm16).\n";
                     return 1;
                 }
-                rs1 = parse_reg(tokens[1], line_num);
+                rs1 = parse_gpr(tokens[1], line_num);
                 int32_t val = parse_int(tokens[2], line_num);
                 imm16 = validate_and_mask_imm(val, 1, base_op, line_num);
             } else {
@@ -443,14 +611,20 @@ int main(int argc, char* argv[]) {
                          << " (expected " << base_op << " rd, offset[rs1] or " << base_op << " rd, [rs1]).\n";
                     return 1;
                 }
-                rd = parse_reg(tokens[1], line_num);
+                bool is_fp_mem = (base_op == "FLD" || base_op == "FST");
+                if (is_fp_mem) {
+                    rd = parse_fpr(tokens[1], line_num);
+                } else {
+                    rd = parse_gpr(tokens[1], line_num);
+                }
+                
                 if (tokens.size() == 4) {
                     int32_t val = parse_int(tokens[2], line_num);
                     imm16 = validate_and_mask_imm(val, 1, base_op, line_num);
-                    rs1   = parse_reg(tokens[3], line_num);
+                    rs1   = parse_gpr(tokens[3], line_num);
                 } else if (tokens.size() == 3) {
                     imm16 = 0;
-                    rs1   = parse_reg(tokens[2], line_num);
+                    rs1   = parse_gpr(tokens[2], line_num);
                 }
             }
             instr_32 = (opcode << 26) | (0 << 24) | (rd << 20) | (rs1 << 16) | imm16;
@@ -465,6 +639,7 @@ int main(int argc, char* argv[]) {
                 return 1; 
             }
             string target = tokens[1];
+            if (!target.empty() && target[0] == '#') target = target.substr(1);
             to_upper(target); 
             int32_t offset_words = 0;
             
@@ -517,20 +692,20 @@ int main(int argc, char* argv[]) {
                      << " requires exactly 3 operands (fd, fs1, fs2).\n"; 
                 return 1; 
             }
-            instr_32 = (opcode << 26) | (parse_reg(tokens[1], line_num) << 20) | 
-                       (parse_reg(tokens[2], line_num) << 16) | (parse_reg(tokens[3], line_num) << 12);
+            instr_32 = (opcode << 26) | (parse_fpr(tokens[1], line_num) << 20) | 
+                       (parse_fpr(tokens[2], line_num) << 16) | (parse_fpr(tokens[3], line_num) << 12);
         } else if (base_op == "FCMP") {
             if (tokens.size() != 3) { 
                 cerr << "Error line " << line_num << ": FCMP requires exactly 2 operands (fs1, fs2).\n"; 
                 return 1; 
             }
-            instr_32 = (opcode << 26) | (parse_reg(tokens[1], line_num) << 16) | (parse_reg(tokens[2], line_num) << 12);
+            instr_32 = (opcode << 26) | (parse_fpr(tokens[1], line_num) << 16) | (parse_fpr(tokens[2], line_num) << 12);
         } else if (base_op == "FMOV") {
             if (tokens.size() != 3) { 
                 cerr << "Error line " << line_num << ": FMOV requires exactly 2 operands (fd, fs2).\n"; 
                 return 1; 
             }
-            instr_32 = (opcode << 26) | (parse_reg(tokens[1], line_num) << 20) | (parse_reg(tokens[2], line_num) << 12);
+            instr_32 = (opcode << 26) | (parse_fpr(tokens[1], line_num) << 20) | (parse_fpr(tokens[2], line_num) << 12);
         }
 
         if (as_hex) {
