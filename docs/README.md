@@ -45,7 +45,7 @@ cmake -B build -G "MinGW Makefiles"
 # 2. Compile all targets
 cmake --build build
 
-# 3. Run all tests (52/52 tests)
+# 3. Run all tests (58/58 tests)
 .\build\risc201-tests.exe
 
 # 4. Run CTest harnesses

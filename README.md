@@ -120,10 +120,10 @@ cmake -B build -G "MinGW Makefiles"
 # 2. Compile all binaries
 cmake --build build
 
-# 3. Run all unit and regression tests (52/52 unit tests + 80/80 safety matrix cases)
+# 3. Run all unit and regression tests (58/58 unit tests + 80/80 safety matrix cases)
 .\build\risc201-tests.exe
 
-# 4. Run CTest verification (6/6 suites including toolchain integration)
+# 4. Run CTest verification (22/22 suites including toolchain integration)
 ctest --test-dir build --output-on-failure
 
 # 5. Assemble an example program
