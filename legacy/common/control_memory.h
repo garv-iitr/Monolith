@@ -1,4 +1,4 @@
-// Hardware Control Memory (ROM) emulation storing microinstructions and opcode dispatch entry tables.
+﻿// Hardware Control Memory (ROM) emulation storing microinstructions and opcode dispatch entry tables.
 #ifndef RISC201_CU_CONTROL_MEMORY_H
 #define RISC201_CU_CONTROL_MEMORY_H
 

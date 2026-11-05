@@ -1,4 +1,4 @@
-// Hardware memory interface modeling word-aligned data loads, stores, and instruction fetches.
+﻿// Hardware memory interface modeling word-aligned data loads, stores, and instruction fetches.
 #ifndef RISC201_CU_MEMORY_UNIT_H
 #define RISC201_CU_MEMORY_UNIT_H
 

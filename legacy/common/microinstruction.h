@@ -1,4 +1,4 @@
-// Defines data structures and bitfield widths for Horizontal and Vertical microinstruction formats.
+﻿// Defines data structures and bitfield widths for Horizontal and Vertical microinstruction formats.
 #ifndef RISC201_CU_MICROINSTRUCTION_H
 #define RISC201_CU_MICROINSTRUCTION_H
 

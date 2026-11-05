@@ -1,4 +1,4 @@
-// Major use: Assembler interface compiling microcode programs into compressed vertical ControlMemory ROM images.
+﻿// Major use: Assembler interface compiling microcode programs into compressed vertical ControlMemory ROM images.
 #ifndef RISC201_CU_V_ASSEMBLER_H
 #define RISC201_CU_V_ASSEMBLER_H
 

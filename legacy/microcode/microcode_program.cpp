@@ -1,4 +1,4 @@
-// Major use: Implements microcode routines for integer ALU, memory, branch, stack, and floating-point instructions.
+﻿// Major use: Implements microcode routines for integer ALU, memory, branch, stack, and floating-point instructions.
 #include "microcode/microcode_program.h"
 
 namespace risc201::cu {

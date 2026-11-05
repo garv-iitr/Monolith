@@ -1,4 +1,4 @@
-// Defines architectural control signal structures, subunit opcodes, bus routing selectors, and sequencer modes.
+﻿// Defines architectural control signal structures, subunit opcodes, bus routing selectors, and sequencer modes.
 #ifndef RISC201_CU_CONTROL_SIGNALS_H
 #define RISC201_CU_CONTROL_SIGNALS_H
 

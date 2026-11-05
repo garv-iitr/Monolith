@@ -1,4 +1,4 @@
-// Major use: Implements packing and assembly translation of microcode routines into vertical ControlMemory ROM.
+﻿// Major use: Implements packing and assembly translation of microcode routines into vertical ControlMemory ROM.
 #include "microcode/v_assembler.h"
 
 #include "microcode/routine_layout.h"

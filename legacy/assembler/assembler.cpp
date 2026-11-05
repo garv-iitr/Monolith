@@ -1,4 +1,4 @@
-#include "assembler.hpp"
+﻿#include "assembler.hpp"
 #include "formats.hpp"
 #include "macros.hpp"
 #include <algorithm>

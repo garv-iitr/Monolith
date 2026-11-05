@@ -1,4 +1,4 @@
-// Major use: Microcode linker resolving symbolic labels, assigning ROM physical addresses, and generating opcode entry tables.
+﻿// Major use: Microcode linker resolving symbolic labels, assigning ROM physical addresses, and generating opcode entry tables.
 #ifndef RISC201_CU_ROUTINE_LAYOUT_H
 #define RISC201_CU_ROUTINE_LAYOUT_H
 

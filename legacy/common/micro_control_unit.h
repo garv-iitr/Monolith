@@ -1,4 +1,4 @@
-// Generic microprogrammed control unit orchestrating ROM fetching, decoding, datapath execution, and micro-sequencing.
+﻿// Generic microprogrammed control unit orchestrating ROM fetching, decoding, datapath execution, and micro-sequencing.
 #ifndef RISC201_CU_MICRO_CONTROL_UNIT_H
 #define RISC201_CU_MICRO_CONTROL_UNIT_H
 

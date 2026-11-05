@@ -1,4 +1,4 @@
-// Major use: Bridge interface routing vertical micro-words into the hardware vertical micro-decoder.
+﻿// Major use: Bridge interface routing vertical micro-words into the hardware vertical micro-decoder.
 #ifndef RISC201_CU_V_CODEC_H
 #define RISC201_CU_V_CODEC_H
 

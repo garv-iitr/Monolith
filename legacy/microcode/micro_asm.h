@@ -1,4 +1,4 @@
-// Major use: Domain-specific micro-assembly language (DSL) for authoring micro-operations and compiling microcode routines.
+﻿// Major use: Domain-specific micro-assembly language (DSL) for authoring micro-operations and compiling microcode routines.
 #ifndef RISC201_CU_MICRO_ASM_H
 #define RISC201_CU_MICRO_ASM_H
 

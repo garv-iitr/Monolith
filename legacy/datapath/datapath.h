@@ -1,4 +1,4 @@
-// Aggregates processor execution hardware including registers, shared bus, decode unit, register file, and memory.
+﻿// Aggregates processor execution hardware including registers, shared bus, decode unit, register file, and memory.
 #ifndef RISC201_CU_DATAPATH_H
 #define RISC201_CU_DATAPATH_H
 

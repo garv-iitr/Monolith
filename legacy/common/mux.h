@@ -1,4 +1,4 @@
-// Generic hardware simulation primitives for parameterized N-to-1 multiplexers and 1-of-N decoders.
+﻿// Generic hardware simulation primitives for parameterized N-to-1 multiplexers and 1-of-N decoders.
 #ifndef RISC201_CU_MUX_H
 #define RISC201_CU_MUX_H
 

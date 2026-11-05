@@ -1,4 +1,4 @@
-// Implements assembly translation from microcode routines into populated horizontal ControlMemory ROM.
+﻿// Implements assembly translation from microcode routines into populated horizontal ControlMemory ROM.
 #include "microcode/h_assembler.h"
 
 #include "microcode/routine_layout.h"

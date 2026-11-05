@@ -1,4 +1,4 @@
-// Internal processor interconnect bus implementing register-to-register transfers, immediate injection, and bus arithmetic.
+﻿// Internal processor interconnect bus implementing register-to-register transfers, immediate injection, and bus arithmetic.
 #ifndef RISC201_CU_SHARED_BUS_H
 #define RISC201_CU_SHARED_BUS_H
 

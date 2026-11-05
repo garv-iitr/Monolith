@@ -1,4 +1,4 @@
-// Major use: Standalone test bench and cycle-by-cycle trace visualizer for horizontal and vertical control units.
+﻿// Major use: Standalone test bench and cycle-by-cycle trace visualizer for horizontal and vertical control units.
 #include <array>
 #include <cstdint>
 #include <cstdio>

@@ -1,4 +1,4 @@
-// Architectural register file unit providing synchronous read and write ports for 16 general-purpose registers.
+﻿// Architectural register file unit providing synchronous read and write ports for 16 general-purpose registers.
 #ifndef RISC201_CU_REGISTER_FILE_UNIT_H
 #define RISC201_CU_REGISTER_FILE_UNIT_H
 

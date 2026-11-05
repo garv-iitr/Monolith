@@ -1,4 +1,4 @@
-// Implements datapath clock cycle execution, bus routing, register latching, and unit clocking.
+﻿// Implements datapath clock cycle execution, bus routing, register latching, and unit clocking.
 #include "datapath/datapath.h"
 
 #include "simulator_core/core/exception.h"

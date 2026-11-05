@@ -1,4 +1,4 @@
-// Major use: Declares program routine structures and the factory building microprograms for all 34 RISC201 opcodes.
+﻿// Major use: Declares program routine structures and the factory building microprograms for all 34 RISC201 opcodes.
 #ifndef RISC201_CU_MICROCODE_PROGRAM_H
 #define RISC201_CU_MICROCODE_PROGRAM_H
 

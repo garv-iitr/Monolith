@@ -1,4 +1,4 @@
-// Fast direct-wire decoder for horizontal micro-words with zero combinational gate latency.
+﻿// Fast direct-wire decoder for horizontal micro-words with zero combinational gate latency.
 #ifndef RISC201_CU_H_CODEC_H
 #define RISC201_CU_H_CODEC_H
 

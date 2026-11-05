@@ -1,4 +1,4 @@
-// Hardware micro-sequencer logic calculating the next micro-PC via multiplexers and branch comparator flags.
+﻿// Hardware micro-sequencer logic calculating the next micro-PC via multiplexers and branch comparator flags.
 #ifndef RISC201_CU_MICRO_SEQUENCER_H
 #define RISC201_CU_MICRO_SEQUENCER_H
 

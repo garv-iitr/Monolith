@@ -1,4 +1,4 @@
-// Major use: Implements reset, dynamic getter, and dynamic setter logic for all internal microarchitectural registers.
+﻿// Major use: Implements reset, dynamic getter, and dynamic setter logic for all internal microarchitectural registers.
 #include "common/internal_registers.h"
 
 namespace risc201::cu {

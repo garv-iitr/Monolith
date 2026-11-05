@@ -1,4 +1,4 @@
-// Hardware instruction decoder unpacking 32-bit RISC201 instruction words into register indices and immediate formats.
+﻿// Hardware instruction decoder unpacking 32-bit RISC201 instruction words into register indices and immediate formats.
 #ifndef RISC201_CU_DECODE_UNIT_H
 #define RISC201_CU_DECODE_UNIT_H
 

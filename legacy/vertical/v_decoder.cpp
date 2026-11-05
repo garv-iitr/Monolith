@@ -1,4 +1,4 @@
-// Major use: Implements 12-bit immediate sign extension and semantic translation for vertical micro-words.
+﻿// Major use: Implements 12-bit immediate sign extension and semantic translation for vertical micro-words.
 #include "vertical/v_decoder.h"
 
 #include "microcode/micro_asm.h"

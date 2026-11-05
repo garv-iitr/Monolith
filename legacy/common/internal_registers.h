@@ -1,4 +1,4 @@
-// State container for all microarchitectural internal registers accessible across microcode cycles.
+﻿// State container for all microarchitectural internal registers accessible across microcode cycles.
 #ifndef RISC201_CU_INTERNAL_REGISTERS_H
 #define RISC201_CU_INTERNAL_REGISTERS_H
 

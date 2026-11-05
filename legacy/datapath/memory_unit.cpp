@@ -1,4 +1,4 @@
-// Implements physical memory word reads, writes, instruction fetch, and bus clock tick operations.
+﻿// Implements physical memory word reads, writes, instruction fetch, and bus clock tick operations.
 #include "datapath/memory_unit.h"
 
 #include <algorithm>

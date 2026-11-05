@@ -1,4 +1,4 @@
-// Major use: Hardware vertical microinstruction decoder translating compact 45-bit micro-words into discrete control signals.
+﻿// Major use: Hardware vertical microinstruction decoder translating compact 45-bit micro-words into discrete control signals.
 #ifndef RISC201_CU_V_DECODER_H
 #define RISC201_CU_V_DECODER_H
 
