@@ -4,7 +4,6 @@
 #include <vector>
 
 #include "control_unit/pipeline_processor.h"
-#include "common/control_signals.h"
 #include "isa_spec/isa.h"
 #include "memory_safety/memory_map.h"
 #include "tests/test_framework.h"

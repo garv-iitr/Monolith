@@ -2,7 +2,7 @@
 #include <cstdio>
 #include <stdexcept>
 
-#include "datapath/memory_unit.h"
+#include "memory/memory_unit.h"
 #include "memory_safety/stack_guard.h"
 #include "simulator_core/core/exception.h"
 

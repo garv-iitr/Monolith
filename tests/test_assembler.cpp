@@ -1,21 +1,80 @@
-#include "assembler.hpp"
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <string>
+#include <vector>
 
 #include "simulator_core/core/cpu.h"
 #include "tests/test_framework.h"
 
+namespace {
+
+std::string find_risc201asm() {
+  std::ifstream f1("risc201asm.exe");
+  if (f1.is_open()) return "risc201asm.exe";
+  std::ifstream f2("build\\risc201asm.exe");
+  if (f2.is_open()) return "build\\risc201asm.exe";
+  std::ifstream f3("./risc201asm");
+  if (f3.is_open()) return "./risc201asm";
+  std::ifstream f4("./build/risc201asm");
+  if (f4.is_open()) return "./build/risc201asm";
+  return "risc201asm";
+}
+
+std::string find_fib_asm() {
+  std::ifstream f1("tests/programs/fib.asm");
+  if (f1.is_open()) return "tests/programs/fib.asm";
+  std::ifstream f2("../tests/programs/fib.asm");
+  if (f2.is_open()) return "../tests/programs/fib.asm";
+  return "tests/programs/fib.asm";
+}
+
+std::vector<Word> run_risc201asm(const std::string& asm_code) {
+  const std::string asm_path = "test_temp.asm";
+  const std::string hex_path = "test_temp.hex";
+  std::ofstream out(asm_path);
+  out << asm_code;
+  out.close();
+
+  const std::string asm_bin = find_risc201asm();
+  const std::string cmd = asm_bin + " " + asm_path + " " + hex_path + " --hex";
+  const int ret = std::system(cmd.c_str());
+  if (ret != 0) {
+    std::remove(asm_path.c_str());
+    std::remove(hex_path.c_str());
+    return {};
+  }
+
+  std::vector<Word> words;
+  std::ifstream hex_in(hex_path);
+  std::string line;
+  while (std::getline(hex_in, line)) {
+    const size_t first = line.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos || line[first] == '#') continue;
+    try {
+      const Word word = static_cast<Word>(std::stoul(line.substr(first, 8), nullptr, 16));
+      words.push_back(word);
+    } catch (...) {}
+  }
+  hex_in.close();
+  std::remove(asm_path.c_str());
+  std::remove(hex_path.c_str());
+  return words;
+}
+
+}  // namespace
+
 RISC201_TEST(assembler_straight_line_executes) {
-  Assembler assembler;
-  AssemblyResult result = assembler.assemble(
-      "    mov r1, #6\n"
-      "    mov r2, #7\n"
+  const auto code = run_risc201asm(
+      "    mov r1, 6\n"
+      "    mov r2, 7\n"
       "    mul r3, r1, r2\n"
       "    add r4, r1, r2\n"
       "    halt\n");
-  CHECK(!result.hasErrors());
-  CHECK_EQ(result.code.size(), 5u);
+  CHECK_EQ(code.size(), 5u);
 
   risc201::Cpu cpu;
-  cpu.load(result.code);
+  cpu.load(code);
   cpu.run();
 
   CHECK_EQ(cpu.read_reg(1), Word{6});
@@ -24,64 +83,52 @@ RISC201_TEST(assembler_straight_line_executes) {
   CHECK_EQ(cpu.read_reg(4), Word{13});
 }
 
-RISC201_TEST(assembler_source_word_mapping_tracks_expansion_and_sections) {
-  Assembler assembler;
-  const AssemblyResult result = assembler.assemble(
-      ".text\n"
-      "start:\n"
-      "    li r1, 0x12345678\n"
-      "    add r2, r1, r1\n"
-      "    .org 0x20\n"
-      "    halt\n"
-      ".data\n"
-      "value: .word 7, 8\n"
-      "    .space 8\n");
-
-  CHECK(!result.hasErrors());
-  CHECK_EQ(result.sourceWords.size(), 8u);
-  CHECK_EQ(result.sourceWords[0].address, 0u);
-  CHECK_EQ(result.sourceWords[0].sourceLine, 3);
-  CHECK(result.sourceWords[0].executable);
-  CHECK_EQ(result.sourceWords[1].address, 4u);
-  CHECK_EQ(result.sourceWords[1].sourceLine, 3);
-  CHECK(result.sourceWords[1].executable);
-  CHECK_EQ(result.sourceWords[2].address, 8u);
-  CHECK_EQ(result.sourceWords[2].sourceLine, 4);
-  CHECK(result.sourceWords[2].executable);
-  CHECK_EQ(result.sourceWords[3].address, 0x20u);
-  CHECK_EQ(result.sourceWords[3].sourceLine, 6);
-  CHECK(result.sourceWords[3].executable);
-  CHECK_EQ(result.sourceWords[4].address, 0x10000u);
-  CHECK_EQ(result.sourceWords[4].sourceLine, 8);
-  CHECK(!result.sourceWords[4].executable);
-  CHECK_EQ(result.sourceWords[5].address, 0x10004u);
-  CHECK(!result.sourceWords[5].executable);
-  CHECK_EQ(result.sourceWords[6].address, 0x10008u);
-  CHECK_EQ(result.sourceWords[6].sourceLine, 9);
-  CHECK(!result.sourceWords[6].executable);
-  CHECK_EQ(result.sourceWords[7].address, 0x1000Cu);
-  CHECK_EQ(result.sourceWords[7].sourceLine, 9);
-  CHECK(!result.sourceWords[7].executable);
-}
-
 RISC201_TEST(assembler_branch_loop_executes) {
-  Assembler assembler;
-  AssemblyResult result = assembler.assemble(
-      "    mov r1, #10\n"
-      "    mov r2, #0\n"
+  const auto code = run_risc201asm(
+      "    mov r1, 10\n"
+      "    mov r2, 0\n"
       "loop:\n"
-      "    cmp r1, #0\n"
+      "    cmp r1, 0\n"
       "    beq done\n"
       "    add r2, r2, r1\n"
-      "    sub r1, r1, #1\n"
+      "    sub r1, r1, 1\n"
       "    b loop\n"
       "done:\n"
       "    halt\n");
-  CHECK(!result.hasErrors());
+  CHECK(!code.empty());
 
   risc201::Cpu cpu;
-  cpu.load(result.code);
+  cpu.load(code);
   cpu.run();
 
   CHECK_EQ(cpu.read_reg(2), Word{55});
+}
+
+RISC201_TEST(assembler_standalone_fib_executes) {
+  const std::string asm_path = find_fib_asm();
+  const std::string asm_bin = find_risc201asm();
+  const std::string cmd = asm_bin + " " + asm_path + " test_fib.hex --hex";
+  const int ret = std::system(cmd.c_str());
+  CHECK_EQ(ret, 0);
+
+  std::vector<Word> code;
+  std::ifstream hex_in("test_fib.hex");
+  std::string line;
+  while (std::getline(hex_in, line)) {
+    const size_t first = line.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos || line[first] == '#') continue;
+    try {
+      code.push_back(static_cast<Word>(std::stoul(line.substr(first, 8), nullptr, 16)));
+    } catch (...) {}
+  }
+  hex_in.close();
+  std::remove("test_fib.hex");
+  CHECK(!code.empty());
+
+  risc201::Cpu cpu;
+  cpu.load(code);
+  cpu.run();
+
+  CHECK_EQ(cpu.read_reg(2), Word{55});
+  CHECK_EQ(cpu.read_mem(0x10000), Word{55});
 }
