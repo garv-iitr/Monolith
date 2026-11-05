@@ -32,11 +32,12 @@ add_library(risc201_cu STATIC
   "legacy/microcode/h_assembler.cpp"
   "legacy/microcode/v_assembler.cpp"
   "legacy/vertical/v_decoder.cpp")
-target_link_libraries(risc201_cu PUBLIC risc201_config risc201_safety)
+target_link_libraries(risc201_cu PUBLIC risc201_config risc201_safety risc201_alu)
 target_compile_options(risc201_cu PRIVATE -Wall -Wextra)
 
 add_library(risc201_alu STATIC
-  alu/ALU.cpp)
+  alu/ALU.cpp
+  fpu/fpu.cpp)
 target_link_libraries(risc201_alu PUBLIC risc201_config)
 target_compile_options(risc201_alu PRIVATE -Wall -Wextra)
 
@@ -46,22 +47,23 @@ add_library(risc201_safety STATIC
 target_link_libraries(risc201_safety PUBLIC risc201_config)
 target_compile_options(risc201_safety PRIVATE -Wall -Wextra)
 
-add_library(risc201_asm STATIC
-  assembler_disassembler/isa.cpp
-  assembler_disassembler/formats.cpp
-  assembler_disassembler/macros.cpp
-  assembler_disassembler/assembler.cpp
-  assembler_disassembler/disassembler.cpp)
-target_include_directories(risc201_asm PUBLIC assembler_disassembler)
-target_compile_options(risc201_asm PRIVATE -Wall -Wextra)
-
-add_executable(risc201asm assembler_disassembler/main_asm.cpp)
-target_link_libraries(risc201asm PRIVATE risc201_asm)
+add_executable(risc201asm assembler_disassembler/asm.cpp)
+target_link_libraries(risc201asm PRIVATE risc201_config)
 target_compile_options(risc201asm PRIVATE -Wall -Wextra)
 
-add_executable(risc201dis assembler_disassembler/main_dis.cpp)
-target_link_libraries(risc201dis PRIVATE risc201_asm)
+add_executable(risc201dis assembler_disassembler/disasm.cpp)
+target_link_libraries(risc201dis PRIVATE risc201_config)
 target_compile_options(risc201dis PRIVATE -Wall -Wextra)
+
+add_library(risc201_asm STATIC
+  legacy/assembler/isa.cpp
+  legacy/assembler/formats.cpp
+  legacy/assembler/macros.cpp
+  legacy/assembler/assembler.cpp
+  legacy/assembler/disassembler.cpp)
+target_link_libraries(risc201_asm PUBLIC risc201_config)
+target_include_directories(risc201_asm PUBLIC legacy/assembler)
+target_compile_options(risc201_asm PRIVATE -Wall -Wextra)
 
 add_executable(risc201-cu-demo "legacy/main.cpp")
 target_link_libraries(risc201-cu-demo PRIVATE risc201_cu)
