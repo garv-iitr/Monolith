@@ -5,7 +5,7 @@
 #include <bitset>
 #include <utility>
 
-#include "common/control_signals.h"
+#include "control_unit/cu_types.h"
 #include "isa_spec/isa.h"
 #include "simulator_core/core/exception.h"
 
