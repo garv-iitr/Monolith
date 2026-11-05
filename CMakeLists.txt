@@ -17,18 +17,21 @@ option(RISC201_TUI "Build the FTXUI terminal-UI debugger (fetches FTXUI)" ON)
 add_library(risc201_config INTERFACE)
 target_include_directories(risc201_config INTERFACE
   ${CMAKE_CURRENT_SOURCE_DIR}
-  "${CMAKE_CURRENT_SOURCE_DIR}/control_unit")
+  "${CMAKE_CURRENT_SOURCE_DIR}/control_unit"
+  "${CMAKE_CURRENT_SOURCE_DIR}/legacy")
 target_compile_definitions(risc201_config INTERFACE
   RISC201_WORD_BITS=${RISC201_WORD_BITS})
 
 add_library(risc201_cu STATIC
-  "control_unit/common/internal_registers.cpp"
-  "control_unit/datapath/datapath.cpp"
-  "control_unit/datapath/memory_unit.cpp"
-  "control_unit/microcode/microcode_program.cpp"
-  "control_unit/microcode/h_assembler.cpp"
-  "control_unit/microcode/v_assembler.cpp"
-  "control_unit/vertical/v_decoder.cpp")
+  "control_unit/control_unit.cpp"
+  "control_unit/pipeline_processor.cpp"
+  "legacy/common/internal_registers.cpp"
+  "legacy/datapath/datapath.cpp"
+  "legacy/datapath/memory_unit.cpp"
+  "legacy/microcode/microcode_program.cpp"
+  "legacy/microcode/h_assembler.cpp"
+  "legacy/microcode/v_assembler.cpp"
+  "legacy/vertical/v_decoder.cpp")
 target_link_libraries(risc201_cu PUBLIC risc201_config risc201_safety)
 target_compile_options(risc201_cu PRIVATE -Wall -Wextra)
 
@@ -60,7 +63,7 @@ add_executable(risc201dis assembler_disassembler/main_dis.cpp)
 target_link_libraries(risc201dis PRIVATE risc201_asm)
 target_compile_options(risc201dis PRIVATE -Wall -Wextra)
 
-add_executable(risc201-cu-demo "control_unit/main.cpp")
+add_executable(risc201-cu-demo "legacy/main.cpp")
 target_link_libraries(risc201-cu-demo PRIVATE risc201_cu)
 target_compile_options(risc201-cu-demo PRIVATE -Wall -Wextra)
 
@@ -88,7 +91,8 @@ add_executable(risc201-tests
   tests/test_debugger.cpp
   tests/test_cu_programs.cpp
   tests/test_programs.cpp
-  tests/test_assembler.cpp)
+  tests/test_assembler.cpp
+  tests/test_pipeline.cpp)
 target_link_libraries(risc201-tests PRIVATE risc201_cu risc201_alu risc201_asm)
 target_compile_options(risc201-tests PRIVATE -Wall -Wextra)
 

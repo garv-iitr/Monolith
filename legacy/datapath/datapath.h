@@ -18,6 +18,15 @@ namespace risc201::cu {
 // Microarchitectural datapath containing internal state, buses, storage units, and execution logic
 class Datapath {
  public:
+  struct Snapshot {
+    InternalRegisters regs;
+    SharedBus bus;
+    RegisterFileUnit rf;
+    bool halted;
+    const char* halt_reason;
+    StageClass last_stage;
+  };
+
   InternalRegisters regs;   // Active microarchitectural register bank
   SharedBus bus;            // Internal transfer bus connecting registers and multiplexers
 
@@ -35,6 +44,8 @@ class Datapath {
 
   // Clears internal registers, register file, memory, and execution flags
   void reset();
+  Snapshot snapshot() const;
+  void restore(const Snapshot& snapshot);
 
   // Executes one micro-cycle: runs bus transfer, register latching, instruction decoding, and subunit clock ticks
   void execute(const ControlSignals& sig, Word muimm);

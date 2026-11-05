@@ -61,6 +61,19 @@ void Datapath::reset() {
   last_stage = StageClass::FETCH;
 }
 
+Datapath::Snapshot Datapath::snapshot() const {
+  return Snapshot{regs, bus, rf, halted, halt_reason, last_stage};
+}
+
+void Datapath::restore(const Snapshot& snapshot) {
+  regs = snapshot.regs;
+  bus = snapshot.bus;
+  rf = snapshot.rf;
+  halted = snapshot.halted;
+  halt_reason = snapshot.halt_reason;
+  last_stage = snapshot.last_stage;
+}
+
 // Executes one micro-cycle across the datapath according to control signals and micro-immediate
 void Datapath::execute(const ControlSignals& sig, Word muimm) {
   last_stage = sig.stage;

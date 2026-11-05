@@ -22,7 +22,29 @@ MemoryUnit::MemoryUnit(std::size_t words)
     : data_(checked_word_count(words), Word{0}) {}
 
 // Clears all memory locations to 0
-void MemoryUnit::reset() { std::fill(data_.begin(), data_.end(), Word{0}); }
+void MemoryUnit::reset() {
+  std::fill(data_.begin(), data_.end(), Word{0});
+  journal_.clear();
+}
+
+std::size_t MemoryUnit::begin_journal() {
+  journal_.clear();
+  journal_active_ = true;
+  return 0;
+}
+
+std::vector<MemoryUnit::WriteDelta> MemoryUnit::take_journal(std::size_t mark) {
+  std::vector<WriteDelta> deltas(journal_.begin() + static_cast<std::ptrdiff_t>(mark),
+                                 journal_.end());
+  journal_.resize(mark);
+  journal_active_ = false;
+  return deltas;
+}
+
+void MemoryUnit::restore_journal(const std::vector<WriteDelta>& deltas) {
+  for (auto it = deltas.rbegin(); it != deltas.rend(); ++it)
+    data_[it->index] = it->previous;
+}
 
 // Checks 4-byte word alignment and validates address is within the allocated memory bounds
 bool MemoryUnit::present(Word byte_addr) const {
