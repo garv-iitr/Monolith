@@ -9,7 +9,7 @@
 #include "fpu/fpu.h"
 #include "control_unit/control_unit.h"
 #include "control_unit/cu_types.h"
-#include "datapath/memory_unit.h"
+#include "memory/memory_unit.h"
 #include "control_unit/hazard_unit.h"
 #include "control_unit/pipeline_bundles.h"
 #include "isa_spec/isa.h"
@@ -55,6 +55,27 @@ class PipelineProcessor {
                              std::size_t mem_words = cu::MemoryUnit::kDefaultWords,
                              bool runtime_safety = false);
 
+  struct Snapshot {
+    Word pc = 0;
+    Word committed_pc = 0;
+    std::array<Word, NUM_REGISTERS> regs{};
+    std::array<Word, NUM_FLOAT_REGISTERS> fregs{};
+    Flags flags{};
+    bool halted = false;
+    ExceptionCode fault_code = ExceptionCode::NONE;
+    Word fault_address = 0;
+
+    IfOfLatch if_of{};
+    OfExLatch of_ex{};
+    ExStageLatch ex_stage{};
+    ChkMaLatch chk_ma{};
+    MaRwLatch ma_rw{};
+
+    PipelineStats stats{};
+    std::vector<Word> frame_boundaries;
+    std::vector<Word> shadow_return_stack;
+  };
+
   void reset();
   void load(const std::vector<Word>& words, Word base = 0);
   void write_data(Word byte_addr, Word value);
@@ -81,10 +102,24 @@ class PipelineProcessor {
   void write_mem(Word addr, Word v) { mem_.write_word(addr, v); }
 
   const Flags& flags() const { return flags_; }
-  Word pc() const { return pc_; }
+  Word pc() const { return committed_pc_; }
+  Word fetch_pc() const { return pc_; }
+  void set_pc(Word p) { pc_ = p; committed_pc_ = p; }
   const PipelineStats& stats() const { return stats_; }
   cu::StageLayout layout() const { return layout_; }
   const char* encoding_name() const { return cu_->encoding_name(); }
+
+  Snapshot snapshot() const;
+  void restore(const Snapshot& s);
+
+  cu::MemoryUnit& mem() { return mem_; }
+  const cu::MemoryUnit& mem() const { return mem_; }
+
+  const std::vector<Word>& stack_frame_boundaries() const { return frame_boundaries_; }
+  const std::vector<Word>& shadow_return_stack() const { return shadow_return_stack_; }
+
+  bool runtime_safety() const { return runtime_safety_; }
+  void set_runtime_safety(bool enable) { runtime_safety_ = enable; }
 
   // Inter-stage pipeline latches
   // 4-Stage: [IF] -> if_of_ -> [OF] -> of_ex_ -> [EX] -> ex_stage_ -> [MA/RW]
@@ -106,12 +141,16 @@ class PipelineProcessor {
   bool runtime_safety_ = false;
 
   Word pc_ = 0;
+  Word committed_pc_ = 0;
   Word regs_[NUM_REGISTERS]{};
   Word fregs_[NUM_FLOAT_REGISTERS]{};
   Flags flags_{};
   bool halted_ = false;
   ExceptionCode fault_code_ = ExceptionCode::NONE;
   Word fault_address_ = 0;
+
+  std::vector<Word> frame_boundaries_;
+  std::vector<Word> shadow_return_stack_;
 
   IfOfLatch if_of_{};
   OfExLatch of_ex_{};
@@ -122,7 +161,7 @@ class PipelineProcessor {
   PipelineStats stats_{};
 
   void initialize_stack_pointer();
-  void check_memory_safety(Word addr, const ChkControl& chk);
+  void check_memory_safety(Word addr, const ChkControl& chk, const MaRwLatch* pending_rw = nullptr);
 };
 
 }  // namespace risc201::pipeline

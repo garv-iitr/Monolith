@@ -17,6 +17,7 @@ PipelineProcessor::PipelineProcessor(cu::StageLayout layout, bool vertical_encod
 
 void PipelineProcessor::reset() {
   pc_ = 0;
+  committed_pc_ = 0;
   std::fill(std::begin(regs_), std::end(regs_), Word{0});
   std::fill(std::begin(fregs_), std::end(fregs_), Word{0});
   flags_ = Flags{};
@@ -32,6 +33,8 @@ void PipelineProcessor::reset() {
 
   cu_->reset();
   stats_ = PipelineStats{};
+  frame_boundaries_.clear();
+  shadow_return_stack_.clear();
   initialize_stack_pointer();
 }
 
@@ -41,7 +44,50 @@ void PipelineProcessor::initialize_stack_pointer() {
 
 void PipelineProcessor::load(const std::vector<Word>& words, Word base) {
   mem_.load_words(base, words);
-  pc_ = base;
+  if (base == 0) {
+    pc_ = 0;
+    committed_pc_ = 0;
+  }
+}
+
+PipelineProcessor::Snapshot PipelineProcessor::snapshot() const {
+  Snapshot s;
+  s.pc = pc_;
+  s.committed_pc = committed_pc_;
+  for (std::size_t i = 0; i < NUM_REGISTERS; ++i) s.regs[i] = regs_[i];
+  for (std::size_t i = 0; i < NUM_FLOAT_REGISTERS; ++i) s.fregs[i] = fregs_[i];
+  s.flags = flags_;
+  s.halted = halted_;
+  s.fault_code = fault_code_;
+  s.fault_address = fault_address_;
+  s.if_of = if_of_;
+  s.of_ex = of_ex_;
+  s.ex_stage = ex_stage_;
+  s.chk_ma = chk_ma_;
+  s.ma_rw = ma_rw_;
+  s.stats = stats_;
+  s.frame_boundaries = frame_boundaries_;
+  s.shadow_return_stack = shadow_return_stack_;
+  return s;
+}
+
+void PipelineProcessor::restore(const Snapshot& s) {
+  pc_ = s.pc;
+  committed_pc_ = s.committed_pc;
+  for (std::size_t i = 0; i < NUM_REGISTERS; ++i) regs_[i] = s.regs[i];
+  for (std::size_t i = 0; i < NUM_FLOAT_REGISTERS; ++i) fregs_[i] = s.fregs[i];
+  flags_ = s.flags;
+  halted_ = s.halted;
+  fault_code_ = s.fault_code;
+  fault_address_ = s.fault_address;
+  if_of_ = s.if_of;
+  of_ex_ = s.of_ex;
+  ex_stage_ = s.ex_stage;
+  chk_ma_ = s.chk_ma;
+  ma_rw_ = s.ma_rw;
+  stats_ = s.stats;
+  frame_boundaries_ = s.frame_boundaries;
+  shadow_return_stack_ = s.shadow_return_stack;
 }
 
 void PipelineProcessor::write_data(Word byte_addr, Word value) {
@@ -56,24 +102,26 @@ void PipelineProcessor::run(std::size_t max_cycles) {
   }
 }
 
-void PipelineProcessor::check_memory_safety(Word addr, const ChkControl& chk) {
+void PipelineProcessor::check_memory_safety(Word addr, const ChkControl& chk,
+                                            const MaRwLatch* pending_rw) {
   if (!runtime_safety_ || !chk.memchk_enable) return;
 
   if (addr % safety::MemoryMap::kWordBytes != 0) {
     throw RuntimeException{ExceptionCode::MISALIGNED_ACCESS, addr};
   }
   if (chk.chk_mode == ChkMode::STACK_BOUNDS) {
-    if (addr < stack_guard_.limit()) {
-      throw RuntimeException{ExceptionCode::STACK_OVERFLOW, addr};
-    }
-    if (addr >= stack_guard_.base()) {
-      throw RuntimeException{ExceptionCode::STACK_UNDERFLOW, addr};
-    }
     return;
   }
 
+  Word sp_val = regs_[REG_SP];
+  if (pending_rw && pending_rw->valid && !pending_rw->bubble &&
+      pending_rw->control.wb.reg_write_en && !pending_rw->is_fpu_reg &&
+      pending_rw->rd == REG_SP) {
+    sp_val = pending_rw->wb_data;
+  }
+
   const RuntimeException fault = stack_guard_.check_access(
-      addr, regs_[REG_SP], static_cast<Word>(safety::MemoryMap::kWordBytes),
+      addr, sp_val, static_cast<Word>(safety::MemoryMap::kWordBytes),
       false, pc_);
   if (fault.code != ExceptionCode::NONE) throw fault;
 }
@@ -99,10 +147,16 @@ bool PipelineProcessor::step() {
         }
         if (ma_rw_.control.halt) {
           halted_ = true;
+          committed_pc_ = ma_rw_.pc;
           return false;
         }
         if (!ma_rw_.control.is_multi_uop || ma_rw_.control.is_last_uop) {
           stats_.instructions_retired++;
+          committed_pc_ = ma_rw_.pc + 4;
+          if (ma_rw_.control.ex.is_ret) {
+            if (!shadow_return_stack_.empty()) shadow_return_stack_.pop_back();
+            if (!frame_boundaries_.empty()) frame_boundaries_.pop_back();
+          }
         }
       }
 
@@ -113,6 +167,10 @@ bool PipelineProcessor::step() {
           wb_val = mem_.read_word(chk_ma_.verified_addr);
         } else if (c.ma.mem_write) {
           mem_.write_word(chk_ma_.verified_addr, chk_ma_.store_val);
+          if (c.ex.is_call) {
+            shadow_return_stack_.push_back(chk_ma_.store_val);
+            frame_boundaries_.push_back(chk_ma_.verified_addr);
+          }
         }
 
         next_ma_rw.pc = chk_ma_.pc;
@@ -127,7 +185,7 @@ bool PipelineProcessor::step() {
       }
 
       if (ex_stage_.valid && !ex_stage_.bubble) {
-        check_memory_safety(ex_stage_.effective_addr, ex_stage_.control.chk);
+        check_memory_safety(ex_stage_.effective_addr, ex_stage_.control.chk, &next_ma_rw);
         next_chk_ma.pc = ex_stage_.pc;
         next_chk_ma.verified_addr = ex_stage_.effective_addr;
         next_chk_ma.store_val = ex_stage_.store_val;
@@ -150,6 +208,10 @@ bool PipelineProcessor::step() {
           wb_val = mem_.read_word(ex_stage_.effective_addr);
         } else if (c.ma.mem_write) {
           mem_.write_word(ex_stage_.effective_addr, ex_stage_.store_val);
+          if (c.ex.is_call) {
+            shadow_return_stack_.push_back(ex_stage_.store_val);
+            frame_boundaries_.push_back(ex_stage_.effective_addr);
+          }
         }
 
         wb_val = (c.wb.reg_write_src == RegWriteSrc::MEM_DATA) ? wb_val
@@ -173,10 +235,16 @@ bool PipelineProcessor::step() {
 
         if (c.halt) {
           halted_ = true;
+          committed_pc_ = ex_stage_.pc;
           return false;
         }
         if (!c.is_multi_uop || c.is_last_uop) {
           stats_.instructions_retired++;
+          committed_pc_ = ex_stage_.pc + 4;
+          if (c.ex.is_ret) {
+            if (!shadow_return_stack_.empty()) shadow_return_stack_.pop_back();
+            if (!frame_boundaries_.empty()) frame_boundaries_.pop_back();
+          }
         }
       } else {
         ma_rw_.flush();
@@ -206,6 +274,17 @@ bool PipelineProcessor::step() {
       const Word op_b = (of_ex_.control.ex.operand_b_src == OperandBSrc::RS2) ? fwd.operand_b
                         : (of_ex_.control.ex.operand_b_src == OperandBSrc::IMM) ? of_ex_.imm32
                         : Word{0};
+
+      if (runtime_safety_) {
+        if (of_ex_.opcode == Opcode::CALL && of_ex_.control.is_multi_uop && !of_ex_.control.is_last_uop) {
+          if (op_a <= stack_guard_.limit()) {
+            throw RuntimeException{ExceptionCode::STACK_OVERFLOW, op_a - 4};
+          }
+        } else if (of_ex_.opcode == Opcode::RET && of_ex_.control.is_multi_uop && !of_ex_.control.is_last_uop) {
+          const auto fault = stack_guard_.check_pop(op_a, of_ex_.pc);
+          if (fault.code != ExceptionCode::NONE) throw fault;
+        }
+      }
 
       if (of_ex_.control.ex.is_fpu) {
         const FpuResult res = fpu_.execute(of_ex_.control.ex.fpu_op, op_a, op_b);
@@ -241,6 +320,11 @@ bool PipelineProcessor::step() {
         if (of_ex_.control.ex.is_ret) {
           branch_taken = true;
           branch_target_pc = fwd.operand_b;
+          if (runtime_safety_) {
+            if (shadow_return_stack_.empty() || branch_target_pc != shadow_return_stack_.back()) {
+              throw RuntimeException{ExceptionCode::SHADOW_STACK_MISMATCH, regs_[REG_SP]};
+            }
+          }
         } else if (of_ex_.opcode == Opcode::B ||
                    of_ex_.opcode == Opcode::CALL ||
                    eval_cond(of_ex_.control.ex.branch_cond, flags_)) {
@@ -259,6 +343,7 @@ bool PipelineProcessor::step() {
 
     if (branch_taken) {
       pc_ = branch_target_pc;
+      committed_pc_ = branch_target_pc;
       if_of_.flush();
       cu_->reset();
       stats_.branch_flushes += 2;
@@ -277,6 +362,7 @@ bool PipelineProcessor::step() {
 
       const HazardDetectionUnit::HazardDecision haz = HazardDetectionUnit::evaluate(
           of_ex_, is_six_stage ? &ex_stage_ : nullptr,
+          is_six_stage ? &chk_ma_ : nullptr,
           bundle.src_reg_a, bundle.src_reg_b,
           bundle.src_reg_a_is_fpu, bundle.src_reg_b_is_fpu,
           is_six_stage);
@@ -292,6 +378,9 @@ bool PipelineProcessor::step() {
           stall_pc = true;
           stall_if_of = true;
           stats_.uop_expansion_cycles++;
+        }
+        if (bundle.halt || opcode_of(inst) == Opcode::HALT) {
+          stall_pc = true;
         }
 
         next_of_ex.pc = if_of_.pc;
@@ -319,8 +408,12 @@ bool PipelineProcessor::step() {
     // -------------------------------------------------------------------------
     // 4. Stage IF: Instruction Fetch
     // -------------------------------------------------------------------------
+    const bool halt_in_flight = (of_ex_.valid && of_ex_.opcode == Opcode::HALT) ||
+                                (next_of_ex.valid && next_of_ex.opcode == Opcode::HALT) ||
+                                (ex_stage_.valid && ex_stage_.control.halt) ||
+                                (chk_ma_.valid && chk_ma_.control.halt);
     IfOfLatch next_if_of = if_of_;
-    if (!stall_pc && !branch_taken && !halted_) {
+    if (!stall_pc && !branch_taken && !halted_ && !halt_in_flight) {
       if (pc_ < mem_.words() * 4) {
         next_if_of.pc = pc_;
         next_if_of.raw = mem_.fetch(pc_);
@@ -330,6 +423,8 @@ bool PipelineProcessor::step() {
       } else {
         next_if_of.flush();
       }
+    } else if (halt_in_flight) {
+      next_if_of.flush();
     }
 
     // Synchronous clock edge: commit latches
@@ -344,6 +439,12 @@ bool PipelineProcessor::step() {
     }
 
     stats_.total_cycles++;
+    if (!if_of_.valid && !next_if_of.valid && !of_ex_.valid && !next_of_ex.valid &&
+        !ex_stage_.valid && !next_ex_stage.valid && !chk_ma_.valid && !next_chk_ma.valid &&
+        !ma_rw_.valid && !next_ma_rw.valid && pc_ >= mem_.words() * 4) {
+      halted_ = true;
+      return false;
+    }
     return !halted_;
 
   } catch (const RuntimeException& e) {

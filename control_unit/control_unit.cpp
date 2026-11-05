@@ -55,186 +55,111 @@ void HorizontalPipelineControlUnit::reset() {
   sequencer_.reset();
 }
 
-PipelineControlBundle HorizontalPipelineControlUnit::crack_single_cycle(Opcode op, Word inst) {
+static PipelineControlBundle bundle_from_horizontal_rom(const HorizontalControlWord& hw, Word inst, Opcode op, std::uint16_t step) {
   PipelineControlBundle b{};
-  b.is_multi_uop = false;
-  b.is_last_uop = true;
-  b.freeze_if_of = false;
-  b.micro_pc = static_cast<std::uint16_t>(rom_address(op, 0));
+  b.micro_pc = static_cast<std::uint16_t>(hw.next_micro_pc);
+  b.is_multi_uop = (hw.is_multi_uop != 0);
+  b.is_last_uop = (hw.is_last_uop != 0);
+  b.freeze_if_of = (hw.freeze_if_of != 0);
+  b.halt = (hw.halt != 0);
+
+  b.ex.alu_op = static_cast<cu::AluOp>(hw.alu_op);
+  b.ex.operand_a_src = static_cast<OperandASrc>(hw.op_a_src);
+  b.ex.operand_b_src = static_cast<OperandBSrc>(hw.op_b_src);
+  b.ex.set_flags = (hw.set_flags != 0);
+  b.ex.branch_cond = static_cast<Cond>(hw.branch_cond);
+  b.ex.is_branch = (hw.is_branch != 0);
+  b.ex.is_call = (hw.is_call != 0);
+  b.ex.is_ret = (hw.is_ret != 0);
+  b.ex.is_fpu = (hw.is_fpu != 0);
+  b.ex.fpu_op = static_cast<cu::FpuOp>(hw.fpu_op);
+
+  b.chk.memchk_enable = (hw.chk_enable != 0);
+  b.chk.chk_mode = static_cast<ChkMode>(hw.chk_mode);
+  b.ma.mem_read = (hw.mem_read != 0);
+  b.ma.mem_write = (hw.mem_write != 0);
+  b.ma.is_fpu = (hw.ma_is_fpu != 0);
+
+  b.wb.reg_write_en = (hw.reg_write_en != 0);
+  b.wb.reg_write_src = static_cast<RegWriteSrc>(hw.reg_write_src);
+  b.wb.is_fpu = (hw.wb_is_fpu != 0);
 
   const bool ibit = get_ibit(inst);
   const std::uint8_t rd = get_rd(inst);
   const std::uint8_t rs1 = get_rs1(inst);
   const std::uint8_t rs2 = get_rs2(inst);
 
-  switch (format_of(op)) {
-    case Format::ALU3:
-      b.ex.alu_op = map_alu_op(op);
-      b.ex.operand_a_src = OperandASrc::RS1;
-      b.ex.operand_b_src = ibit ? OperandBSrc::IMM : OperandBSrc::RS2;
+  if (op == Opcode::CALL) {
+    if (step == 0) {
+      b.src_reg_a = REG_SP;
+      b.wb.dest_reg = REG_SP;
+      b.imm = 4;
+    } else {
+      b.src_reg_a = REG_SP;
+      b.imm = get_offset26(inst);
+    }
+  } else if (op == Opcode::RET) {
+    if (step == 0) {
+      b.src_reg_a = REG_SP;
+      b.wb.dest_reg = REG_RA;
+    } else {
+      b.src_reg_a = REG_SP;
+      b.src_reg_b = REG_RA;
+      b.wb.dest_reg = REG_SP;
+      b.imm = 4;
+    }
+  } else {
+    const Format fmt = format_of(op);
+    if (fmt == Format::ALU3 || fmt == Format::COMPARE) {
       b.src_reg_a = rs1;
       b.src_reg_b = ibit ? 0 : rs2;
+      if (ibit) b.ex.operand_b_src = OperandBSrc::IMM;
       b.imm = expand_immediate(get_mode(inst), get_imm16(inst));
-      b.wb.reg_write_en = true;
-      b.wb.reg_write_src = RegWriteSrc::ALU_OUT;
       b.wb.dest_reg = rd;
-      break;
-
-    case Format::ALU2:
-      b.wb.dest_reg = rd;
-      b.wb.reg_write_en = true;
-      b.wb.reg_write_src = RegWriteSrc::ALU_OUT;
-      if (op == Opcode::MOV) {
-        b.ex.alu_op = cu::AluOp::PASS_B;
-        b.ex.operand_b_src = ibit ? OperandBSrc::IMM : OperandBSrc::RS2;
-        b.src_reg_b = ibit ? 0 : rs2;
-        b.imm = expand_immediate(get_mode(inst), get_imm16(inst));
-      } else { // NOT
-        b.ex.alu_op = cu::AluOp::NOT;
-        b.ex.operand_a_src = OperandASrc::ZERO;
-        b.ex.operand_b_src = OperandBSrc::RS2;
-        b.src_reg_b = rs2;
-      }
-      break;
-
-    case Format::COMPARE: // CMP
-      b.ex.alu_op = cu::AluOp::SUB;
-      b.ex.operand_a_src = OperandASrc::RS1;
-      b.ex.operand_b_src = ibit ? OperandBSrc::IMM : OperandBSrc::RS2;
-      b.src_reg_a = rs1;
-      b.src_reg_b = ibit ? 0 : rs2;
+    } else if (fmt == Format::ALU2) {
+      b.src_reg_b = (op == Opcode::MOV && ibit) ? 0 : rs2;
+      if (op == Opcode::MOV && ibit) b.ex.operand_b_src = OperandBSrc::IMM;
       b.imm = expand_immediate(get_mode(inst), get_imm16(inst));
-      b.ex.set_flags = true;
-      break;
-
-    case Format::MEMORY:
+      b.wb.dest_reg = rd;
+    } else if (fmt == Format::MEMORY) {
       b.src_reg_a = rs1;
       b.imm = static_cast<Word>(get_imm16_signed(inst));
-      b.ex.alu_op = cu::AluOp::ADD;
-      b.ex.operand_a_src = OperandASrc::RS1;
-      b.ex.operand_b_src = OperandBSrc::IMM;
-      if (op == Opcode::LD || op == Opcode::FLD) {
-        b.chk.memchk_enable = true;
-        b.chk.chk_mode = ChkMode::MEMORY_ADDR;
-        b.ma.mem_read = true;
-        b.ma.is_fpu = (op == Opcode::FLD);
-        b.wb.reg_write_en = true;
-        b.wb.is_fpu = (op == Opcode::FLD);
-        b.wb.reg_write_src = RegWriteSrc::MEM_DATA;
-        b.wb.dest_reg = rd;
-      } else if (op == Opcode::ST || op == Opcode::FST) {
+      if (op == Opcode::ST || op == Opcode::FST) {
         b.src_reg_b = rd;
         b.src_reg_b_is_fpu = (op == Opcode::FST);
-        b.chk.memchk_enable = true;
-        b.chk.chk_mode = ChkMode::MEMORY_ADDR;
-        b.ma.mem_write = true;
-        b.ma.is_fpu = (op == Opcode::FST);
-      } else if (op == Opcode::BNDCHK) {
-        b.chk.memchk_enable = true;
-        b.chk.chk_mode = ChkMode::BNDCHK_INSTR;
+      } else {
+        b.wb.dest_reg = rd;
       }
-      break;
-
-    case Format::BRANCH:
-      b.ex.is_branch = true;
-      b.ex.branch_cond = map_branch_cond(op);
+    } else if (fmt == Format::BRANCH) {
       b.imm = get_offset26(inst);
-      break;
-
-    case Format::FPU3:
-      b.ex.is_fpu = true;
-      b.ex.fpu_op = map_fpu_op(op);
+    } else if (fmt == Format::FPU3) {
       b.src_reg_a = rs1;
       b.src_reg_b = rs2;
       b.src_reg_a_is_fpu = true;
       b.src_reg_b_is_fpu = true;
-      b.wb.reg_write_en = true;
-      b.wb.is_fpu = true;
-      b.wb.reg_write_src = RegWriteSrc::FPU_OUT;
       b.wb.dest_reg = rd;
-      break;
-
-    case Format::FPU2:
-      b.ex.is_fpu = true;
-      b.ex.fpu_op = map_fpu_op(op);
+    } else if (fmt == Format::FPU2) {
       b.src_reg_b = rs2;
       b.src_reg_b_is_fpu = true;
       if (op == Opcode::FCMP) {
         b.src_reg_a = rs1;
         b.src_reg_a_is_fpu = true;
-        b.ex.set_flags = true;
-      } else { // FMOV
-        b.wb.reg_write_en = true;
-        b.wb.is_fpu = true;
-        b.wb.reg_write_src = RegWriteSrc::FPU_OUT;
+      } else {
         b.wb.dest_reg = rd;
       }
-      break;
-
-    case Format::NO_OPERAND:
-      if (op == Opcode::HALT) b.halt = true;
-      break;
-
-    default:
-      break;
+    }
   }
   return b;
 }
 
-PipelineControlBundle HorizontalPipelineControlUnit::crack_multi_uop(Opcode op, Word inst, std::uint16_t step) {
-  PipelineControlBundle b{};
-  b.is_multi_uop = true;
-  b.micro_pc = static_cast<std::uint16_t>(rom_address(op, step));
+PipelineControlBundle HorizontalPipelineControlUnit::crack_single_cycle(Opcode op, Word inst) {
+  const HorizontalControlWord hw = lookup_horizontal_rom(op, 0);
+  return bundle_from_horizontal_rom(hw, inst, op, 0);
+}
 
-  if (op == Opcode::CALL) {
-    if (step == 0) { // uop 0: SP = SP - 4
-      b.ex.alu_op = cu::AluOp::SUB;
-      b.ex.operand_a_src = OperandASrc::RS1;
-      b.ex.operand_b_src = OperandBSrc::IMM;
-      b.src_reg_a = REG_SP;
-      b.imm = 4;
-      b.chk.memchk_enable = true;
-      b.chk.chk_mode = ChkMode::STACK_BOUNDS;
-      b.wb.reg_write_en = true;
-      b.wb.dest_reg = REG_SP;
-      b.freeze_if_of = true;
-      b.is_last_uop = false;
-    } else { // uop 1: Mem[SP] = PC + 4, branch target
-      b.ex.is_branch = true;
-      b.ex.is_call = true;
-      b.src_reg_a = REG_SP;
-      b.imm = get_offset26(inst);
-      b.ma.mem_write = true;
-      b.is_last_uop = true;
-    }
-  } else if (op == Opcode::RET) {
-    if (step == 0) { // uop 0: RA = Mem[SP]
-      b.ex.alu_op = cu::AluOp::PASS_A;
-      b.ex.operand_a_src = OperandASrc::RS1;
-      b.src_reg_a = REG_SP;
-      b.chk.memchk_enable = true;
-      b.chk.chk_mode = ChkMode::STACK_BOUNDS;
-      b.ma.mem_read = true;
-      b.wb.reg_write_en = true;
-      b.wb.reg_write_src = RegWriteSrc::MEM_DATA;
-      b.wb.dest_reg = REG_RA;
-      b.freeze_if_of = true;
-      b.is_last_uop = false;
-    } else { // uop 1: SP = SP + 4, branch RA
-      b.ex.alu_op = cu::AluOp::ADD;
-      b.ex.operand_a_src = OperandASrc::RS1;
-      b.ex.operand_b_src = OperandBSrc::IMM;
-      b.src_reg_a = REG_SP;
-      b.src_reg_b = REG_RA;
-      b.imm = 4;
-      b.ex.is_ret = true;
-      b.ex.is_branch = true;
-      b.wb.reg_write_en = true;
-      b.wb.dest_reg = REG_SP;
-      b.is_last_uop = true;
-    }
-  }
-  return b;
+PipelineControlBundle HorizontalPipelineControlUnit::crack_multi_uop(Opcode op, Word inst, std::uint16_t step) {
+  const HorizontalControlWord hw = lookup_horizontal_rom(op, step);
+  return bundle_from_horizontal_rom(hw, inst, op, step);
 }
 
 PipelineControlBundle HorizontalPipelineControlUnit::peek_bundle(Word instruction, const Flags& flags) const {
@@ -282,11 +207,201 @@ VerticalControlWord VerticalPipelineControlUnit::fetch_vertical_rom(Opcode op, s
 
 PipelineControlBundle VerticalPipelineControlUnit::decode_compact(
     const VerticalControlWord& vw, Word inst, std::uint16_t step) const {
-  const Opcode op = static_cast<Opcode>((vw.op_class << 4) | (vw.sub_op & 0xF));
-  if (op == Opcode::CALL || op == Opcode::RET) {
-    return HorizontalPipelineControlUnit::crack_multi_uop(op, inst, step);
+  PipelineControlBundle b{};
+  const Opcode op = opcode_of(inst);
+  b.micro_pc = static_cast<std::uint16_t>(rom_address(op, step));
+  b.is_multi_uop = (vw.is_multi_uop != 0);
+  b.is_last_uop = (vw.is_last_uop != 0);
+  b.freeze_if_of = (vw.freeze_if_of != 0);
+  b.halt = (vw.halt != 0);
+  b.ex.set_flags = (vw.set_flags != 0);
+
+  const bool ibit = get_ibit(inst);
+  const std::uint8_t rd = get_rd(inst);
+  const std::uint8_t rs1 = get_rs1(inst);
+  const std::uint8_t rs2 = get_rs2(inst);
+
+  // 1. Combinational Operation Class & Sub-Op Decoding
+  switch (vw.op_class) {
+    case 0: // ALU Class
+      switch (vw.sub_op) {
+        case 1:  b.ex.alu_op = cu::AluOp::ADD; break;
+        case 2:  b.ex.alu_op = cu::AluOp::SUB; break;
+        case 3:  b.ex.alu_op = cu::AluOp::MUL; break;
+        case 4:  b.ex.alu_op = cu::AluOp::DIV; break;
+        case 5:  b.ex.alu_op = cu::AluOp::MOD; break;
+        case 6:  b.ex.alu_op = cu::AluOp::AND; break;
+        case 7:  b.ex.alu_op = cu::AluOp::OR;  break;
+        case 8:  b.ex.alu_op = cu::AluOp::NOT; break;
+        case 9:  b.ex.alu_op = cu::AluOp::XOR; break;
+        case 10: b.ex.alu_op = cu::AluOp::LSL; break;
+        case 11: b.ex.alu_op = cu::AluOp::LSR; break;
+        case 12: b.ex.alu_op = cu::AluOp::ASR; break;
+        case 13: b.ex.alu_op = cu::AluOp::SUB; b.ex.set_flags = true; break; // CMP
+        case 14: b.ex.alu_op = cu::AluOp::PASS_B; break; // MOV
+        default: b.ex.alu_op = cu::AluOp::NOP; break;
+      }
+      break;
+
+    case 1: // FPU Class
+      b.ex.is_fpu = true;
+      switch (vw.sub_op) {
+        case 1: b.ex.fpu_op = cu::FpuOp::FADD; break;
+        case 2: b.ex.fpu_op = cu::FpuOp::FSUB; break;
+        case 3: b.ex.fpu_op = cu::FpuOp::FMUL; break;
+        case 4: b.ex.fpu_op = cu::FpuOp::FDIV; break;
+        case 5: b.ex.fpu_op = cu::FpuOp::FCMP; b.ex.set_flags = true; break;
+        case 6: b.ex.fpu_op = cu::FpuOp::FMOV; break;
+        default: b.ex.fpu_op = cu::FpuOp::NOP; break;
+      }
+      break;
+
+    case 2: // MEM Class
+      b.ex.alu_op = cu::AluOp::ADD;
+      b.chk.memchk_enable = true;
+      b.chk.chk_mode = (vw.sub_op == 5) ? ChkMode::BNDCHK_INSTR : ChkMode::MEMORY_ADDR;
+      break;
+
+    case 3: // BRANCH Class
+      b.ex.is_branch = true;
+      b.ex.branch_cond = static_cast<Cond>(vw.sub_op);
+      break;
+
+    case 4: // SYSTEM Class
+      if (vw.sub_op == 1) b.halt = true;
+      break;
+
+    case 5: // FLOW Class (CALL / RET)
+      if (vw.sub_op == 1) { // CALL
+        if (step == 0) {
+          b.ex.alu_op = cu::AluOp::SUB;
+          b.chk.memchk_enable = true;
+          b.chk.chk_mode = ChkMode::STACK_BOUNDS;
+        } else {
+          b.ex.is_branch = true;
+          b.ex.is_call = true;
+        }
+      } else { // RET
+        if (step == 0) {
+          b.ex.alu_op = cu::AluOp::PASS_A;
+          b.chk.memchk_enable = true;
+          b.chk.chk_mode = ChkMode::STACK_BOUNDS;
+        } else {
+          b.ex.alu_op = cu::AluOp::ADD;
+          b.ex.is_branch = true;
+          b.ex.is_ret = true;
+        }
+      }
+      break;
   }
-  return HorizontalPipelineControlUnit::crack_single_cycle(op, inst);
+
+  // 2. Combinational Operand Mux Decoding
+  switch (vw.operand_mode) {
+    case 0: // RS1 and RS2 (overridden to IMM if ibit is set)
+      b.ex.operand_a_src = OperandASrc::RS1;
+      b.ex.operand_b_src = ibit ? OperandBSrc::IMM : OperandBSrc::RS2;
+      break;
+    case 1: // RS1 and IMM
+      b.ex.operand_a_src = OperandASrc::RS1;
+      b.ex.operand_b_src = OperandBSrc::IMM;
+      break;
+    case 2: // ZERO and RS2
+      b.ex.operand_a_src = OperandASrc::ZERO;
+      b.ex.operand_b_src = (op == Opcode::MOV && ibit) ? OperandBSrc::IMM : OperandBSrc::RS2;
+      break;
+    case 3: // ZERO and IMM
+      b.ex.operand_a_src = OperandASrc::ZERO;
+      b.ex.operand_b_src = OperandBSrc::IMM;
+      break;
+    case 4: // RS1 and ZERO
+      b.ex.operand_a_src = OperandASrc::RS1;
+      b.ex.operand_b_src = OperandBSrc::ZERO;
+      break;
+    case 5: // PC and IMM
+      b.ex.operand_a_src = OperandASrc::PC;
+      b.ex.operand_b_src = OperandBSrc::IMM;
+      break;
+  }
+
+  // 3. Combinational Memory Action Decoding
+  switch (vw.mem_action) {
+    case 0: b.ma.mem_read = false; b.ma.mem_write = false; break;
+    case 1: b.ma.mem_read = true;  b.ma.mem_write = false; break;
+    case 2: b.ma.mem_read = false; b.ma.mem_write = true;  break;
+    case 3: b.ma.mem_read = false; b.ma.mem_write = false; b.chk.memchk_enable = true; break;
+  }
+  b.ma.is_fpu = (vw.is_fpu_domain != 0);
+
+  // 4. Combinational Writeback Target Decoding
+  switch (vw.wb_target) {
+    case 0: b.wb.reg_write_en = false; break;
+    case 1: b.wb.reg_write_en = true; b.wb.reg_write_src = RegWriteSrc::ALU_OUT; break;
+    case 2: b.wb.reg_write_en = true; b.wb.reg_write_src = RegWriteSrc::MEM_DATA; break;
+    case 3: b.wb.reg_write_en = true; b.wb.reg_write_src = RegWriteSrc::PC_PLUS4; break;
+    case 4: b.wb.reg_write_en = true; b.wb.reg_write_src = RegWriteSrc::FPU_OUT; break;
+  }
+  b.wb.is_fpu = (vw.is_fpu_domain != 0);
+
+  // 5. Register Operands and Immediates Extraction
+  if (op == Opcode::CALL) {
+    if (step == 0) {
+      b.src_reg_a = REG_SP;
+      b.wb.dest_reg = REG_SP;
+      b.imm = 4;
+    } else {
+      b.src_reg_a = REG_SP;
+      b.imm = get_offset26(inst);
+    }
+  } else if (op == Opcode::RET) {
+    if (step == 0) {
+      b.src_reg_a = REG_SP;
+      b.wb.dest_reg = REG_RA;
+    } else {
+      b.src_reg_a = REG_SP;
+      b.src_reg_b = REG_RA;
+      b.wb.dest_reg = REG_SP;
+      b.imm = 4;
+    }
+  } else {
+    const Format fmt = format_of(op);
+    if (fmt == Format::ALU3 || fmt == Format::COMPARE) {
+      b.src_reg_a = rs1;
+      b.src_reg_b = ibit ? 0 : rs2;
+      b.imm = expand_immediate(get_mode(inst), get_imm16(inst));
+      b.wb.dest_reg = rd;
+    } else if (fmt == Format::ALU2) {
+      b.src_reg_b = (op == Opcode::MOV && ibit) ? 0 : rs2;
+      b.imm = expand_immediate(get_mode(inst), get_imm16(inst));
+      b.wb.dest_reg = rd;
+    } else if (fmt == Format::MEMORY) {
+      b.src_reg_a = rs1;
+      b.imm = static_cast<Word>(get_imm16_signed(inst));
+      if (op == Opcode::ST || op == Opcode::FST) {
+        b.src_reg_b = rd;
+        b.src_reg_b_is_fpu = (op == Opcode::FST);
+      } else {
+        b.wb.dest_reg = rd;
+      }
+    } else if (fmt == Format::BRANCH) {
+      b.imm = get_offset26(inst);
+    } else if (fmt == Format::FPU3) {
+      b.src_reg_a = rs1;
+      b.src_reg_b = rs2;
+      b.src_reg_a_is_fpu = true;
+      b.src_reg_b_is_fpu = true;
+      b.wb.dest_reg = rd;
+    } else if (fmt == Format::FPU2) {
+      b.src_reg_b = rs2;
+      b.src_reg_b_is_fpu = true;
+      if (op == Opcode::FCMP) {
+        b.src_reg_a = rs1;
+        b.src_reg_a_is_fpu = true;
+      } else {
+        b.wb.dest_reg = rd;
+      }
+    }
+  }
+  return b;
 }
 
 PipelineControlBundle VerticalPipelineControlUnit::peek_bundle(Word instruction, const Flags& flags) const {

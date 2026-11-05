@@ -9,13 +9,6 @@
 #include "control_unit/pipeline_bundles.h"
 #include "isa_spec/isa.h"
 
-// Backward-compatibility support for non-pipelined simulator core and codecs
-#include "common/micro_control_unit.h"
-#include "horizontal/h_codec.h"
-#include "vertical/v_codec.h"
-#include "microcode/h_assembler.h"
-#include "microcode/v_assembler.h"
-
 namespace risc201::pipeline {
 
 // =============================================================================
@@ -90,9 +83,5 @@ using HorizontalPipelineControlUnit = risc201::pipeline::HorizontalPipelineContr
 using VerticalPipelineControlUnit   = risc201::pipeline::VerticalPipelineControlUnit;
 using PipelineProcessor             = risc201::pipeline::PipelineProcessor;
 using PipelinedProcessor            = risc201::pipeline::PipelineProcessor;
-
-// Legacy non-pipelined instantiations
-using HorizontalControlUnit = MicroControlUnit<HorizontalMicroWord, HorizontalCodec>;
-using VerticalControlUnit   = MicroControlUnit<VerticalMicroWord, VerticalCodec>;
 
 }  // namespace risc201::cu

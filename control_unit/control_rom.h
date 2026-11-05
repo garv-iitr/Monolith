@@ -336,32 +336,70 @@ class ControlStore {
 
   static constexpr VerticalControlWord build_vertical_entry(Opcode op, std::uint16_t step) {
     VerticalControlWord w{};
-    const std::uint8_t op_val = static_cast<std::uint8_t>(op);
-    w.sub_op = static_cast<std::uint32_t>(op_val & 0xF);
-    w.op_class = static_cast<std::uint32_t>((op_val >> 4) & 0x7);
     w.next_uop_step = static_cast<std::uint32_t>(step & 0x7);
 
-    if (op == Opcode::CALL) {
-      w.is_multi_uop = 1;
-      if (step == 0) {
-        w.freeze_if_of = 1;
-        w.is_last_uop = 0;
-      } else {
-        w.is_last_uop = 1;
-      }
-    } else if (op == Opcode::RET) {
-      w.is_multi_uop = 1;
-      if (step == 0) {
-        w.freeze_if_of = 1;
-        w.is_last_uop = 0;
-      } else {
-        w.is_last_uop = 1;
-      }
-    } else if (op == Opcode::HALT) {
-      w.halt = 1;
-      w.is_last_uop = 1;
-    } else {
-      w.is_last_uop = 1;
+    switch (op) {
+      // ALU 3-Operand
+      case Opcode::ADD: w.op_class = 0; w.sub_op = 1;  w.operand_mode = 0; w.wb_target = 1; w.is_last_uop = 1; break;
+      case Opcode::SUB: w.op_class = 0; w.sub_op = 2;  w.operand_mode = 0; w.wb_target = 1; w.is_last_uop = 1; break;
+      case Opcode::MUL: w.op_class = 0; w.sub_op = 3;  w.operand_mode = 0; w.wb_target = 1; w.is_last_uop = 1; break;
+      case Opcode::DIV: w.op_class = 0; w.sub_op = 4;  w.operand_mode = 0; w.wb_target = 1; w.is_last_uop = 1; break;
+      case Opcode::MOD: w.op_class = 0; w.sub_op = 5;  w.operand_mode = 0; w.wb_target = 1; w.is_last_uop = 1; break;
+      case Opcode::AND: w.op_class = 0; w.sub_op = 6;  w.operand_mode = 0; w.wb_target = 1; w.is_last_uop = 1; break;
+      case Opcode::OR:  w.op_class = 0; w.sub_op = 7;  w.operand_mode = 0; w.wb_target = 1; w.is_last_uop = 1; break;
+      case Opcode::NOT: w.op_class = 0; w.sub_op = 8;  w.operand_mode = 2; w.wb_target = 1; w.is_last_uop = 1; break;
+      case Opcode::XOR: w.op_class = 0; w.sub_op = 9;  w.operand_mode = 0; w.wb_target = 1; w.is_last_uop = 1; break;
+      case Opcode::LSL: w.op_class = 0; w.sub_op = 10; w.operand_mode = 0; w.wb_target = 1; w.is_last_uop = 1; break;
+      case Opcode::LSR: w.op_class = 0; w.sub_op = 11; w.operand_mode = 0; w.wb_target = 1; w.is_last_uop = 1; break;
+      case Opcode::ASR: w.op_class = 0; w.sub_op = 12; w.operand_mode = 0; w.wb_target = 1; w.is_last_uop = 1; break;
+      case Opcode::CMP: w.op_class = 0; w.sub_op = 13; w.operand_mode = 0; w.wb_target = 0; w.set_flags = 1; w.is_last_uop = 1; break;
+      case Opcode::MOV: w.op_class = 0; w.sub_op = 14; w.operand_mode = 2; w.wb_target = 1; w.is_last_uop = 1; break;
+
+      // Memory
+      case Opcode::LD:     w.op_class = 2; w.sub_op = 1; w.operand_mode = 1; w.mem_action = 1; w.wb_target = 2; w.is_last_uop = 1; break;
+      case Opcode::ST:     w.op_class = 2; w.sub_op = 2; w.operand_mode = 1; w.mem_action = 2; w.wb_target = 0; w.is_last_uop = 1; break;
+      case Opcode::FLD:    w.op_class = 2; w.sub_op = 3; w.operand_mode = 1; w.mem_action = 1; w.wb_target = 2; w.is_fpu_domain = 1; w.is_last_uop = 1; break;
+      case Opcode::FST:    w.op_class = 2; w.sub_op = 4; w.operand_mode = 1; w.mem_action = 2; w.wb_target = 0; w.is_fpu_domain = 1; w.is_last_uop = 1; break;
+      case Opcode::BNDCHK: w.op_class = 2; w.sub_op = 5; w.operand_mode = 1; w.mem_action = 3; w.wb_target = 0; w.is_last_uop = 1; break;
+
+      // Branch
+      case Opcode::B:   w.op_class = 3; w.sub_op = 0; w.operand_mode = 1; w.wb_target = 0; w.is_last_uop = 1; break;
+      case Opcode::BEQ: w.op_class = 3; w.sub_op = 0; w.operand_mode = 1; w.wb_target = 0; w.is_last_uop = 1; break;
+      case Opcode::BNE: w.op_class = 3; w.sub_op = 1; w.operand_mode = 1; w.wb_target = 0; w.is_last_uop = 1; break;
+      case Opcode::BGT: w.op_class = 3; w.sub_op = 2; w.operand_mode = 1; w.wb_target = 0; w.is_last_uop = 1; break;
+      case Opcode::BLT: w.op_class = 3; w.sub_op = 3; w.operand_mode = 1; w.wb_target = 0; w.is_last_uop = 1; break;
+
+      // Multi-Uop Control Flow
+      case Opcode::CALL:
+        w.op_class = 5; w.sub_op = 1; w.is_multi_uop = 1;
+        if (step == 0) {
+          w.operand_mode = 1; w.wb_target = 1; w.freeze_if_of = 1; w.is_last_uop = 0;
+        } else {
+          w.operand_mode = 1; w.mem_action = 2; w.wb_target = 0; w.is_last_uop = 1;
+        }
+        break;
+      case Opcode::RET:
+        w.op_class = 5; w.sub_op = 2; w.is_multi_uop = 1;
+        if (step == 0) {
+          w.operand_mode = 4; w.mem_action = 1; w.wb_target = 2; w.freeze_if_of = 1; w.is_last_uop = 0;
+        } else {
+          w.operand_mode = 1; w.wb_target = 1; w.is_last_uop = 1;
+        }
+        break;
+
+      // Floating-Point Unit
+      case Opcode::FADD: w.op_class = 1; w.sub_op = 1; w.operand_mode = 0; w.wb_target = 4; w.is_fpu_domain = 1; w.is_last_uop = 1; break;
+      case Opcode::FSUB: w.op_class = 1; w.sub_op = 2; w.operand_mode = 0; w.wb_target = 4; w.is_fpu_domain = 1; w.is_last_uop = 1; break;
+      case Opcode::FMUL: w.op_class = 1; w.sub_op = 3; w.operand_mode = 0; w.wb_target = 4; w.is_fpu_domain = 1; w.is_last_uop = 1; break;
+      case Opcode::FDIV: w.op_class = 1; w.sub_op = 4; w.operand_mode = 0; w.wb_target = 4; w.is_fpu_domain = 1; w.is_last_uop = 1; break;
+      case Opcode::FCMP: w.op_class = 1; w.sub_op = 5; w.operand_mode = 0; w.wb_target = 0; w.is_fpu_domain = 1; w.set_flags = 1; w.is_last_uop = 1; break;
+      case Opcode::FMOV: w.op_class = 1; w.sub_op = 6; w.operand_mode = 2; w.wb_target = 4; w.is_fpu_domain = 1; w.is_last_uop = 1; break;
+
+      // System
+      case Opcode::HALT: w.op_class = 4; w.sub_op = 1; w.halt = 1; w.is_last_uop = 1; break;
+      case Opcode::NOP:
+      default:
+        w.op_class = 4; w.sub_op = 0; w.is_last_uop = 1; break;
     }
     return w;
   }

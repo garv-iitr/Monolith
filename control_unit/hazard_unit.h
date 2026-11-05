@@ -93,6 +93,7 @@ class HazardDetectionUnit {
 
   static HazardDecision evaluate(const OfExLatch& of_ex,
                                  const ExStageLatch* ex_chk,
+                                 const ChkMaLatch* chk_ma,
                                  std::uint8_t decode_rs1,
                                  std::uint8_t decode_rs2,
                                  bool rs1_is_fpu,
@@ -117,6 +118,18 @@ class HazardDetectionUnit {
         ex_chk->control.ma.mem_read && (ex_chk->rd != 0 || ex_chk->is_fpu_reg)) {
       if (((decode_rs1 != 0 || rs1_is_fpu) && ex_chk->rd == decode_rs1 && ex_chk->is_fpu_reg == rs1_is_fpu) ||
           ((decode_rs2 != 0 || rs2_is_fpu) && ex_chk->rd == decode_rs2 && ex_chk->is_fpu_reg == rs2_is_fpu)) {
+        d.stall_pc = true;
+        d.stall_if_of = true;
+        d.insert_bubble_ex = true;
+        return d;
+      }
+    }
+
+    // 6-Stage Load-Use Hazard: Load in CHK/MA stage requires bubble while memory is being read
+    if (is_six_stage && chk_ma && chk_ma->valid &&
+        chk_ma->control.ma.mem_read && (chk_ma->rd != 0 || chk_ma->is_fpu_reg)) {
+      if (((decode_rs1 != 0 || rs1_is_fpu) && chk_ma->rd == decode_rs1 && chk_ma->is_fpu_reg == rs1_is_fpu) ||
+          ((decode_rs2 != 0 || rs2_is_fpu) && chk_ma->rd == decode_rs2 && chk_ma->is_fpu_reg == rs2_is_fpu)) {
         d.stall_pc = true;
         d.stall_if_of = true;
         d.insert_bubble_ex = true;
