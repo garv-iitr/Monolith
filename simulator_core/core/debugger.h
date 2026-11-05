@@ -31,6 +31,12 @@ class Debugger {
     refresh();
   }
 
+  void write_freg(std::uint8_t index, Word value) {
+    clear_history();
+    cpu_.write_freg(index, value);
+    refresh();
+  }
+
   void write_mem(Word address, Word value) {
     clear_history();
     cpu_.write_mem(address, value);
@@ -72,13 +78,14 @@ class Debugger {
     refresh();
   }
 
-  // run one whole instruction (a fetch plus its microroutine)
+  // run one whole instruction (advances cycles until one instruction retires)
   bool step_instruction() {
     if (cpu_.halted()) return false;
+    const std::size_t start_retired = cpu_.pipe().stats().instructions_retired;
     do {
       if (!record_micro_step()) break;
-    } while (cpu_.micro_pc() != 0 && !cpu_.halted());
-    at_boundary_ = (cpu_.micro_pc() == 0);
+    } while (cpu_.pipe().stats().instructions_retired == start_retired && !cpu_.halted());
+    at_boundary_ = true;
     refresh();
     return !cpu_.halted();
   }
@@ -154,7 +161,8 @@ class Debugger {
 
   bool record_micro_step() {
     if (cpu_.halted()) return false;
-    const bool instruction_start = cpu_.micro_pc() == 0;
+    const std::size_t retired_before = cpu_.pipe().stats().instructions_retired;
+    const bool instruction_start = at_boundary_;
     HistoryEntry entry{cpu_.checkpoint(), {}, micro_steps_,
                        micro_ops_this_instruction_, at_boundary_,
                        instruction_start, active_instruction_address_};
@@ -171,7 +179,8 @@ class Debugger {
     entry.memory = cpu_.finish_step(journal_mark);
     push_history(std::move(entry));
     ++micro_steps_;
-    at_boundary_ = cpu_.micro_pc() == 0;
+    const bool retired_now = cpu_.pipe().stats().instructions_retired > retired_before;
+    at_boundary_ = retired_now || cpu_.halted();
     if (at_boundary_) {
       micro_ops_this_instruction_ = micro_steps_;
       micro_steps_ = 0;

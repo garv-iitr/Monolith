@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -111,6 +112,47 @@ void print_registers(const risc201::Debugger& dbg) {
   }
 }
 
+void print_fregs(const risc201::Debugger& dbg) {
+  const risc201::StateView& v = dbg.view();
+  std::printf("  --- Floating-Point Registers (IEEE-754) ---\n");
+  char line[160];
+  for (int row = 0; row < NUM_FLOAT_REGISTERS / 2; ++row) {
+    const int a = row * 2;
+    const int b = a + 1;
+    float fa = 0.0f, fb = 0.0f;
+    std::memcpy(&fa, &v.fprs[a], sizeof(float));
+    std::memcpy(&fb, &v.fprs[b], sizeof(float));
+    std::snprintf(line, sizeof(line), "  f%-2d=0x%-8X (%-10.4f)   f%-2d=0x%-8X (%-10.4f)",
+                  a, static_cast<unsigned>(v.fprs[a]), fa,
+                  b, static_cast<unsigned>(v.fprs[b]), fb);
+    std::printf("%s\n", line);
+  }
+}
+
+void print_pipeline_state(const risc201::Debugger& dbg) {
+  const risc201::StateView& v = dbg.view();
+  const auto& stats = v.stats;
+  std::printf("  --- Pipeline Execution State (%s) ---\n", v.stage);
+  std::printf("  [IF]     pc=0x%-8X raw=0x%08X valid=%d\n",
+              static_cast<unsigned>(v.if_of.pc), static_cast<unsigned>(v.if_of.raw), v.if_of.valid ? 1 : 0);
+  std::printf("  [OF/EX]  pc=0x%-8X op=%-8s rd=%-2d rs1=%-2d rs2=%-2d imm=0x%X valid=%d\n",
+              static_cast<unsigned>(v.of_ex.pc), opcode_name(v.of_ex.opcode),
+              v.of_ex.rd, v.of_ex.rs1, v.of_ex.rs2, static_cast<unsigned>(v.of_ex.imm32), v.of_ex.valid ? 1 : 0);
+  std::printf("  [EX]     pc=0x%-8X alu=0x%-8X eff_addr=0x%-8X store_val=0x%X valid=%d\n",
+              static_cast<unsigned>(v.ex_stage.pc), static_cast<unsigned>(v.ex_stage.alu_result),
+              static_cast<unsigned>(v.ex_stage.effective_addr), static_cast<unsigned>(v.ex_stage.store_val), v.ex_stage.valid ? 1 : 0);
+  if (std::string(v.stage).find("6") != std::string::npos) {
+    std::printf("  [MEMCHK] pc=0x%-8X v_addr=0x%-8X valid=%d\n",
+                static_cast<unsigned>(v.chk_ma.pc), static_cast<unsigned>(v.chk_ma.verified_addr), v.chk_ma.valid ? 1 : 0);
+  }
+  std::printf("  [MA/RW]  pc=0x%-8X wb_rd=%-2d wb_data=0x%-8X is_fpu=%d valid=%d\n",
+              static_cast<unsigned>(v.ma_rw.pc), v.ma_rw.rd, static_cast<unsigned>(v.ma_rw.wb_data),
+              v.ma_rw.is_fpu_reg ? 1 : 0, v.ma_rw.valid ? 1 : 0);
+  std::printf("  [Stats]  cycles=%zu retired=%zu CPI=%.2f IPC=%.2f stalls=%zu flushes=%zu fwd=%zu\n",
+              stats.total_cycles, stats.instructions_retired, stats.cpi(), stats.ipc(),
+              stats.load_use_stalls, stats.branch_flushes, stats.forwarding_events);
+}
+
 void print_micro_state(const risc201::Debugger& dbg) {
   const risc201::StateView& v = dbg.view();
   const risc201::cu::InternalRegisters& m = v.micro;
@@ -158,6 +200,9 @@ void print_help() {
       "  watch <reg> | w       watch a register\n"
       "  unwatch <reg>         stop watching a register\n"
       "  regs                  dump registers and flags\n"
+      "  fregs | fr            dump floating-point registers (f0..f15)\n"
+      "  pipe | pipeline       show live pipeline latches and statistics\n"
+      "  set <rN|fN> <val>     set register or FPR value\n"
       "  mem [addr] [count]    dump memory words\n"
       "  stack [window]        show stack words, SP and call-frame boundaries\n"
       "  stack trace [steps] [window]  render stack after each instruction with diffs\n"
@@ -303,6 +348,38 @@ int main(int argc, char* argv[]) {
       }
     } else if (cmd == "regs") {
       print_registers(dbg);
+    } else if (cmd == "fregs" || cmd == "fr") {
+      print_fregs(dbg);
+    } else if (cmd == "pipe" || cmd == "pipeline") {
+      print_pipeline_state(dbg);
+    } else if (cmd == "set") {
+      std::string target, val_str;
+      if (iss >> target >> val_str) {
+        Word val = 0;
+        if (parse_word(val_str, val)) {
+          if (target.size() >= 2 && target[0] == 'r') {
+            try {
+              int reg = std::stoi(target.substr(1));
+              if (reg >= 0 && reg < NUM_REGISTERS) {
+                dbg.write_reg(static_cast<std::uint8_t>(reg), val);
+                std::printf("  set r%d = 0x%X\n", reg, static_cast<unsigned>(val));
+              }
+            } catch (...) {}
+          } else if (target.size() >= 2 && target[0] == 'f') {
+            try {
+              int freg = std::stoi(target.substr(1));
+              if (freg >= 0 && freg < NUM_FLOAT_REGISTERS) {
+                dbg.write_freg(static_cast<std::uint8_t>(freg), val);
+                std::printf("  set f%d = 0x%X\n", freg, static_cast<unsigned>(val));
+              }
+            } catch (...) {}
+          }
+        } else {
+          std::printf("  usage: set <rN|fN> <hex_or_dec_val>\n");
+        }
+      } else {
+        std::printf("  usage: set <rN|fN> <hex_or_dec_val>\n");
+      }
     } else if (cmd == "mem") {
       Word addr = 0;
       std::size_t count = 16;

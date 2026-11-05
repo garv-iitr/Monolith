@@ -16,7 +16,6 @@
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 
-#include "assembler.hpp"
 #include "isa_spec/isa.h"
 #include "simulator_core/core/debugger.h"
 
@@ -46,22 +45,22 @@ std::string hex_value(Word value) {
 }
 
 std::vector<SourceLine> source_lines(const std::string& source,
-                                    const AssemblyResult& assembly) {
+                                    const std::vector<Word>& words) {
   std::vector<SourceLine> lines;
   std::istringstream input(source);
   std::string text;
+  Word addr = 0;
   while (std::getline(input, text)) {
     SourceLine line;
     line.number = static_cast<int>(lines.size()) + 1;
-    line.text = std::move(text);
-    lines.push_back(std::move(line));
-  }
-  for (const AssemblySourceWord& word : assembly.sourceWords) {
-    if (word.executable && word.sourceLine > 0 &&
-        static_cast<std::size_t>(word.sourceLine) <= lines.size()) {
-      lines[static_cast<std::size_t>(word.sourceLine - 1)].addresses.push_back(
-          static_cast<Word>(word.address));
+    line.text = text;
+    size_t non_ws = text.find_first_not_of(" \t\r\n");
+    if (non_ws != std::string::npos && text[non_ws] != '#' && text[non_ws] != '.' &&
+        text.find(':') == std::string::npos && addr / 4 < words.size()) {
+      line.addresses.push_back(addr);
+      addr += 4;
     }
+    lines.push_back(std::move(line));
   }
   return lines;
 }
@@ -149,8 +148,6 @@ class SimulatorTui : public ComponentBase {
 
   Element Render() override {
     const StateView& view = debugger_.view();
-    const auto& micro = view.micro;
-    const auto& signals = debugger_.cpu().signals();
     const auto& layout = debugger_.cpu().micro_layout();
 
     Elements source_rows;
@@ -185,6 +182,19 @@ class SimulatorTui : public ComponentBase {
       });
       register_rows.push_back(register_row);
     }
+    register_rows.push_back(separator());
+    register_rows.push_back(text("FPU REGISTERS (IEEE-754)") | color(Color::Cyan) | bold);
+    for (int row = 0; row < NUM_FLOAT_REGISTERS / 2; ++row) {
+      const int a = row * 2;
+      const int b = a + 1;
+      Element freg_row = hbox({
+          text("f" + std::to_string(a)) | color(Color::RGB(130, 200, 255)) | bold,
+          text(" 0x" + hex_value(view.fprs[a])) | color(Color::White),
+          text("   f" + std::to_string(b)) | color(Color::RGB(130, 200, 255)) | bold,
+          text(" 0x" + hex_value(view.fprs[b])) | color(Color::White),
+      });
+      register_rows.push_back(freg_row);
+    }
 
     Elements micro_rows;
     const int micro_start = std::max(0, static_cast<int>(view.micro_pc) - 7);
@@ -213,26 +223,34 @@ class SimulatorTui : public ComponentBase {
         text("IR       0x" + hex_value(view.ir)) | color(Color::White),
         text("Opcode   " + std::string(opcode_name(opcode_of(view.ir)))) |
             color(Color::RGB(238, 190, 92)) | bold,
-        text("MicroPC  " + std::to_string(view.micro_pc) + " / " + view.stage) |
+        text("Mode     " + std::string(view.stage) + " / " + (vertical_ ? "Vertical" : "Horizontal")) |
             color(Color::Cyan),
         text("Flags    Z=" + bit(view.flags.Z) + " N=" + bit(view.flags.N) +
              " C=" + bit(view.flags.C) + " V=" + bit(view.flags.V)) |
             color(Color::RGB(160, 190, 220)),
         separator(),
-        text("A        0x" + hex_value(micro.A)),
-        text("B        0x" + hex_value(micro.B)),
-        text("ALU      0x" + hex_value(micro.alu_result)),
-        text("MAR      0x" + hex_value(micro.mar)),
-        text("MDR      0x" + hex_value(micro.mdr)),
-        text("LD       0x" + hex_value(micro.ld_result)),
-        separator(),
-        text("ALU " + std::string(risc201::cu::alu_op_name(signals.alu_op)) +
-             "  RF " + risc201::cu::reg_op_name(signals.reg_op) +
-             "  MEM " + risc201::cu::mem_op_name(signals.mem_op)),
-        text("Fault " + (view.fault_code == ExceptionCode::NONE
-                              ? std::string("-")
-                              : std::string(to_string(view.fault_code)))),
+        text("PIPELINE STAGE LATCHES") | bold | color(Color::Yellow),
+        text("[IF]  PC=0x" + hex_value(view.if_of.pc) + " RAW=0x" + hex_value(view.if_of.raw)),
+        text("[OF]  OP=" + std::string(opcode_name(view.of_ex.opcode)) + " RD=r" + std::to_string(view.of_ex.rd) +
+             " RS1=r" + std::to_string(view.of_ex.rs1) + " RS2=r" + std::to_string(view.of_ex.rs2)),
+        text("[EX]  ALU=0x" + hex_value(view.ex_stage.alu_result) + " ADDR=0x" + hex_value(view.ex_stage.effective_addr) +
+             " VAL=0x" + hex_value(view.ex_stage.store_val)),
     };
+    if (stages_ == 6) {
+      execution_rows.push_back(text("[CHK] ADDR=0x" + hex_value(view.chk_ma.verified_addr)));
+    }
+    execution_rows.push_back(text("[WB]  RD=" + std::string(view.ma_rw.is_fpu_reg ? "f" : "r") + std::to_string(view.ma_rw.rd) +
+                                  " DATA=0x" + hex_value(view.ma_rw.wb_data)));
+    execution_rows.push_back(separator());
+    execution_rows.push_back(text("Cycles: " + std::to_string(view.stats.total_cycles) +
+                                  "  Ret: " + std::to_string(view.stats.instructions_retired) +
+                                  "  CPI: " + std::to_string(view.stats.cpi()).substr(0, 4)));
+    execution_rows.push_back(text("Stalls: " + std::to_string(view.stats.load_use_stalls) +
+                                  "  Flushes: " + std::to_string(view.stats.branch_flushes) +
+                                  "  Fwd: " + std::to_string(view.stats.forwarding_events)));
+    if (view.fault_code != ExceptionCode::NONE) {
+      execution_rows.push_back(text("FAULT: " + std::string(to_string(view.fault_code))) | color(Color::Red) | bold);
+    }
 
     Elements stack_memory_rows;
     if (show_memory_) {
@@ -451,31 +469,53 @@ class SimulatorTui : public ComponentBase {
   }
 
   void assemble_file(const std::string& path) {
+    std::string hex_file = path;
     const std::string source = read_file(path);
-    Assembler assembler;
-    AssemblyResult result = assembler.assemble(source, path);
-    if (result.hasErrors()) {
-      std::ostringstream errors;
-      for (std::size_t i = 0; i < result.errors.size(); ++i) {
-        if (i != 0) errors << " | ";
-        errors << result.errors[i];
+    std::vector<Word> text_words;
+    std::vector<Word> data_words;
+
+    if (path.size() >= 4 && path.substr(path.size() - 4) == ".asm") {
+      hex_file = path.substr(0, path.size() - 4) + ".hex";
+      std::string cmd = "risc201asm \"" + path + "\" \"" + hex_file + "\" --hex";
+      const int ret = std::system(cmd.c_str());
+      if (ret != 0) {
+        message_ = "assembler error running risc201asm on " + path;
+        message_error_ = true;
+        return;
       }
-      message_ = errors.str();
+    }
+
+    std::ifstream hex_in(hex_file);
+    if (!hex_in.is_open()) {
+      message_ = "could not open hex file " + hex_file;
       message_error_ = true;
       return;
     }
 
-    std::vector<Word> text_words(result.code.begin(), result.code.end());
-    std::vector<Word> data_words(result.data.begin(), result.data.end());
-    const std::vector<SourceLine> source_map = source_lines(source, result);
-    debugger_.load_program(static_cast<Word>(result.textBase), text_words,
-                           static_cast<Word>(result.dataBase), data_words);
+    std::string line;
+    while (std::getline(hex_in, line)) {
+      size_t first = line.find_first_not_of(" \t\r\n");
+      if (first == std::string::npos || line[first] == '#') continue;
+      try {
+        Word word = static_cast<Word>(std::stoul(line.substr(first, 8), nullptr, 16));
+        text_words.push_back(word);
+      } catch (...) {}
+    }
+
+    if (text_words.empty()) {
+      message_ = "no machine words assembled from " + path;
+      message_error_ = true;
+      return;
+    }
+
+    const std::vector<SourceLine> source_map = source_lines(source, text_words);
+    debugger_.load_program(0, text_words, 0x10000, data_words);
     source_ = source_map;
     source_name_ = path;
     text_words_ = std::move(text_words);
     data_words_ = std::move(data_words);
-    text_base_ = static_cast<Word>(result.textBase);
-    data_base_ = static_cast<Word>(result.dataBase);
+    text_base_ = 0;
+    data_base_ = 0x10000;
     loaded_image_ = true;
     active_instruction_address_ = text_base_;
     current_source_line_ = -1;
