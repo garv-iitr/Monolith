@@ -1,4 +1,0 @@
-- FIX 1 of 4: Updated branch offset calculation to PC+4 relative convention in assembler.cpp, disassembler.cpp, formats.hpp, and NOTES.md.
-- FIX 2 of 4: Added line-start '#' comment support in assembler.cpp while preserving '#' as immediate prefix elsewhere.
-- FIX 3 of 4: Updated NOTES.md section 1 with Option A (hardware/professor stack-based spec) and Option B (Sarangi style) for CALL/RET semantics.
-- FIX 4 of 4: Added optional '--image' flag in main_asm.cpp to output a single combined file padded with zeros between text and data sections.
