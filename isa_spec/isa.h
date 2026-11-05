@@ -173,8 +173,8 @@ inline bool eval_cond(Cond c, const Flags& f) {
   switch (c) {
     case Cond::EQ: return f.Z;
     case Cond::NE: return !f.Z;
-    case Cond::GT: return !f.N && !f.Z;
-    case Cond::LT: return f.N;
+    case Cond::GT: return (f.N == f.V) && !f.Z;
+    case Cond::LT: return f.N != f.V;
   }
   return false;
 }
