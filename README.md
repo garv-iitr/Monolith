@@ -72,7 +72,7 @@ flowchart LR
 1. **Assembler (`risc201asm`):** Two-pass assembler with symbol resolution, section handling (`.text`, `.data`), and full-descending stack macro expansion (`PUSH`, `POP`, `SPUSH`, `SPOP`).
 2. **Disassembler (`risc201dis`):** Single-pass binary/hex disassembler that reconstructs assembly mnemonics, operands, and memory offsets.
 3. **Execution Simulator (`risc201-sim`):** Unified pipelined debugger supporting live stage latch inspection (`pipe`), IEEE-754 FPU registers (`fregs`), single-step (`s`), micro-cycle step (`mi`), reverse execution (`u`), breakpoints (`b`), and full-screen terminal UI (`--tui`).
-4. **Test Suite (`risc201-tests`):** Automated regression suite with 48 test targets and an 80-case runtime safety matrix covering pipeline hazards, control ROM, gate-level arithmetic, memory safety, and toolchain continuity.
+4. **Test Suite (`risc201-tests`):** Automated regression suite with 52 test targets and an 80-case runtime safety matrix covering pipeline hazards, control ROM, gate-level arithmetic, memory safety, and toolchain continuity.
 
 ---
 
@@ -84,20 +84,20 @@ Cycle counts, instruction retirement, and CPI measured across our cycle-accurate
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Recursive Fibonacci ($N=10$)** | 4-Stage | Horizontal (48-bit) | 3,597 | 1,825 | 1.97 | 5.07x | 1,415 |
 | | 4-Stage | Vertical (24-bit) | 3,597 | 1,825 | 1.97 | 5.07x | 1,415 |
-| | 6-Stage | Horizontal (48-bit) | 4,305 | 1,825 | 2.36 | 4.40x | 2,121 |
-| | 6-Stage | Vertical (24-bit) | 4,305 | 1,825 | 2.36 | 4.40x | 2,121 |
+| | 6-Stage | Horizontal (48-bit) | 3,952 | 1,825 | 2.17 | 4.79x | 1,768 |
+| | 6-Stage | Vertical (24-bit) | 3,952 | 1,825 | 2.17 | 4.79x | 1,768 |
 | | *Single-Bus Baseline (4-Stage)* | *Microprogrammed* | *18,230* | *1,825* | *9.99* | *1.00x* | *N/A* |
 | | *Single-Bus Baseline (6-Stage)* | *Microprogrammed* | *18,937* | *1,825* | *10.38* | *1.00x* | *N/A* |
 | **Matrix Multiply + FPU ($2\times2$)** | 4-Stage | Horizontal (48-bit) | 315 | 229 | 1.38 | 7.31x | 83 |
 | | 4-Stage | Vertical (24-bit) | 315 | 229 | 1.38 | 7.31x | 83 |
-| | 6-Stage | Horizontal (48-bit) | 335 | 229 | 1.46 | 6.96x | 101 |
-| | 6-Stage | Vertical (24-bit) | 335 | 229 | 1.46 | 6.96x | 101 |
+| | 6-Stage | Horizontal (48-bit) | 326 | 229 | 1.42 | 7.15x | 92 |
+| | 6-Stage | Vertical (24-bit) | 326 | 229 | 1.42 | 7.15x | 92 |
 | | *Single-Bus Baseline (4-Stage)* | *Microprogrammed* | *2,303* | *229* | *10.06* | *1.00x* | *N/A* |
 | | *Single-Bus Baseline (6-Stage)* | *Microprogrammed* | *2,331* | *229* | *10.18* | *1.00x* | *N/A* |
 | **Bubble Sort + Checksum** | 4-Stage | Horizontal (48-bit) | 818 | 606 | 1.35 | 7.09x | 209 |
 | | 4-Stage | Vertical (24-bit) | 818 | 606 | 1.35 | 7.09x | 209 |
-| | 6-Stage | Horizontal (48-bit) | 918 | 606 | 1.51 | 6.45x | 307 |
-| | 6-Stage | Vertical (24-bit) | 918 | 606 | 1.51 | 6.45x | 307 |
+| | 6-Stage | Horizontal (48-bit) | 869 | 606 | 1.43 | 6.81x | 258 |
+| | 6-Stage | Vertical (24-bit) | 869 | 606 | 1.43 | 6.81x | 258 |
 | | *Single-Bus Baseline (4-Stage)* | *Microprogrammed* | *5,800* | *606* | *9.57* | *1.00x* | *N/A* |
 | | *Single-Bus Baseline (6-Stage)* | *Microprogrammed* | *5,918* | *606* | *9.77* | *1.00x* | *N/A* |
 
@@ -120,7 +120,7 @@ cmake -B build -G "MinGW Makefiles"
 # 2. Compile all binaries
 cmake --build build
 
-# 3. Run all unit and regression tests (48/48 unit tests + 80/80 safety matrix cases)
+# 3. Run all unit and regression tests (52/52 unit tests + 80/80 safety matrix cases)
 .\build\risc201-tests.exe
 
 # 4. Run CTest verification (6/6 suites including toolchain integration)

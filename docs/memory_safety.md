@@ -8,7 +8,7 @@ address space: 32,768 words total. The checked stack occupies
 exclusive initial SP `0x20000`; the first push writes at `0x1FFFC`.
 The CLI/assembler data image starts at `0x10000`. This reconciles the map
 mismatch called out in the original integration note: the CPU memory and
-StackGuard use the same 128 KiB address space, so `.data` at `0x10000` is
+StackGuard use the same 128 KiB address space, so data located at `0x10000` is
 valid and does not overlap the reserved high stack range.
 
 During CPU instruction execution, runtime datapath checks validate memory

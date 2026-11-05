@@ -104,7 +104,7 @@ When an instruction immediately following a load instruction (`LD`, `FLD`) depen
   ```
 - **Action:**
   - **4-Stage Pipeline:** Injects **1 stall bubble** into `OF/EX`. While the load completes `MA/RW` in the next cycle, the dependent instruction waits in `OF`, and then reads the newly committed register with zero further delay.
-  - **6-Stage Pipeline:** Injects **2 stall bubbles** into `OF/EX` because memory read completes later in the `MA` stage.
+  - **6-Stage Pipeline:** Injects **2 stall bubbles** into `OF/EX` because memory read completes in the `MA` stage. When the loaded data is latched into `MA/RW`, it is forwarded directly to `EX` for the dependent instruction via Rule 3 forwarding, avoiding any third stall cycle.
   - While stalled, `PC` and `IF/OF` registers hold their current values.
 
 ### C. Control Hazards (Branches & Subroutine Calls)

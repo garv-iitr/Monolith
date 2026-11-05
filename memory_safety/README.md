@@ -19,11 +19,11 @@ ranges below the stack and validates stack-pointer alignment and push/pop
 boundaries. It rejects ranges that cross the data/stack boundary and uses
 subtraction-based checks to avoid address addition overflow.
 
-The assembler/CLI convention places `.data` at `0x10000`; that range is inside
+The assembler/CLI convention places data at `0x10000`; that range is inside
 the data region and below the reserved top-of-memory stack region. The
 control-unit assemblers encode microcode and are separate from the program
 assembler.
 
-See [`docs/memory-safety-evaluation.md`](../docs/memory-safety-evaluation.md)
+See [`docs/memory_safety.md`](../docs/memory_safety.md)
 for the measured CPU configuration matrix, presentation demo commands, and
 the bounded per-instruction `stack trace` mode.

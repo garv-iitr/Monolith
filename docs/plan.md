@@ -75,4 +75,4 @@
 | **2.7** | Active stack memory visualizer | Live ASCII stack frame renderer (`stack` and `stack trace` commands) showing frame markers. | Completed |
 | **3** | Microcode execution in CPU simulator | Control Memory ROM tables directly drive execution; micro-PC state displayed step-by-step. | Completed |
 | **4** | Optimized ALU class integrated into simulator | `risc201_alu` statically linked into simulator and pipeline execution datapath. | Completed |
-| **5** | Comprehensive evaluation across test cases | Evaluated on Fibonacci, Matrix Multiply with FPU, and Bubble Sort across all pipeline/ROM modes. 43/43 tests passing. | Completed |
+| **5** | Comprehensive evaluation across test cases | Evaluated on Fibonacci, Matrix Multiply with FPU, and Bubble Sort across all pipeline/ROM modes. 52/52 unit tests passing (plus 80/80 memory safety matrix cases). | Completed |

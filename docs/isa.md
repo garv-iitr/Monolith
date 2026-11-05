@@ -29,6 +29,9 @@
 | **LD** | `0x11` | `010001` | `R[rt] = Mem[R[rs] + imm]` |
 | **ST** | `0x12` | `010010` | `Mem[R[rs] + imm] = R[rt]` |
 
+> [!NOTE]
+> **Design Note on GPR $\leftrightarrow$ FPR Transfers:** Direct register-to-register transfer instructions between General-Purpose Registers (GPRs) and Floating-Point Registers (FPRs) are intentionally omitted from the ISA to maintain clean architectural isolation between integer and floating-point register files. Data transfers between domains are explicitly conducted through memory or the stack using store and load pairs (e.g., integer `ST` followed by floating-point `FLD`, or `FST` followed by `LD`).
+
 ## 0x2\_ : Control Flow & System Operations
 
 | Mnemonic | Opcode (Hex) | Opcode (Bin) | Operation |
@@ -36,8 +39,8 @@
 | **B** | `0x20` | `100000` | `PC = target address` |
 | **BEQ** | `0x21` | `100001` | If Z==1, `PC = target` |
 | **BNE** | `0x22` | `100010` | If Z==0, `PC = target` |
-| **BGT** | `0x23` | `100011` | If N==0 & Z==0, `PC = target` |
-| **BLT** | `0x24` | `100100` | If N==1, `PC = target` |
+| **BGT** | `0x23` | `100011` | If (N == V) & (Z == 0), `PC = target` |
+| **BLT** | `0x24` | `100100` | If (N != V), `PC = target` |
 | **CALL** | `0x25` | `100101` | Push return PC to the program and shadow stacks, `PC = target` |
 | **RET** | `0x26` | `100110` | Verify popped PC against the shadow stack, then return |
 | **BNDCHK** | `0x27` | `100111` | Verify stack/address bounds |
