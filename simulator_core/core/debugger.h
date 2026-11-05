@@ -20,7 +20,9 @@ class Debugger {
       std::size_t mem_words = risc201::cu::MemoryUnit::kDefaultWords,
       risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE,
       ControlEncoding encoding = ControlEncoding::HORIZONTAL)
-      : cpu_(mem_words, layout, encoding) {}
+      : cpu_(mem_words, layout, encoding) {
+    refresh();
+  }
 
   const Cpu& cpu() const { return cpu_; }
   Word active_instruction_address() const { return active_instruction_address_; }

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "isa_spec/isa.h"
+#include "control_unit/control_rom.h"
 #include "simulator_core/core/debugger.h"
 #ifdef RISC201_HAS_TUI
 #include "simulator_core/ui/tui.h"
@@ -168,17 +169,17 @@ void print_micro_state(const risc201::Debugger& dbg) {
               static_cast<unsigned>(m.rd), static_cast<unsigned>(m.rs1),
               static_cast<unsigned>(m.rs2), m.flags_E ? 1 : 0, m.flags_GT ? 1 : 0);
 
-  const std::uint8_t op = static_cast<std::uint8_t>(get_opcode(v.ir));
-  const std::uint16_t start = dbg.cpu().micro_routine_start(op);
-  const std::uint16_t end = dbg.cpu().micro_routine_end(op);
-  std::printf("  routine [%u..%u) = %u micro-ops",
-              static_cast<unsigned>(start), static_cast<unsigned>(end),
-              static_cast<unsigned>(end - start));
+  const Opcode op = opcode_of(v.ir);
+  const bool is_complex = (op == Opcode::CALL || op == Opcode::RET);
+  const std::size_t rom_base = risc201::cu::rom_address(op, 0);
+  std::printf("  Control ROM entry: 0x%02X (%s, %s)\n",
+              static_cast<unsigned>(rom_base), opcode_name(op),
+              is_complex ? "cracked 2-uop sequence" : "fast-path 1-cycle uop");
   if (dbg.at_instruction_boundary())
     std::printf("  -- end of instruction (%zu micro-ops)\n",
                 dbg.micro_ops_last_instruction());
   else
-    std::printf("  (at micro-op %zu)\n", dbg.micro_steps());
+    std::printf("  (step uop %u)\n", static_cast<unsigned>(v.micro_pc & 0x1));
 }
 
 void print_watch_changes(risc201::Debugger& dbg) {

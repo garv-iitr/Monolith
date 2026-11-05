@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <functional>
 #include <iomanip>
@@ -17,12 +18,17 @@
 #include <ftxui/dom/elements.hpp>
 
 #include "isa_spec/isa.h"
+#include "control_unit/control_rom.h"
+#include "control_unit/control_word.h"
 #include "simulator_core/core/debugger.h"
 
 namespace risc201 {
 namespace {
 
 using namespace ftxui;
+using risc201::pipeline::lookup_horizontal_rom;
+using risc201::pipeline::lookup_vertical_rom;
+using risc201::pipeline::rom_address;
 
 struct SourceLine {
   int number = 0;
@@ -44,6 +50,24 @@ std::string hex_value(Word value) {
   return output.str();
 }
 
+std::string find_risc201asm_bin() {
+  const std::vector<std::string> candidates = {
+      "build/risc201asm.exe",
+      "build/risc201asm",
+      "build/Release/risc201asm.exe",
+      "build/Debug/risc201asm.exe",
+      "../build/risc201asm.exe",
+      "../build/Release/risc201asm.exe",
+      "risc201asm.exe",
+      "risc201asm"
+  };
+  for (const auto& path : candidates) {
+    std::ifstream f(path);
+    if (f.good()) return path;
+  }
+  return "risc201asm";
+}
+
 std::vector<SourceLine> source_lines(const std::string& source,
                                     const std::vector<Word>& words) {
   std::vector<SourceLine> lines;
@@ -57,8 +81,27 @@ std::vector<SourceLine> source_lines(const std::string& source,
     size_t non_ws = text.find_first_not_of(" \t\r\n");
     if (non_ws != std::string::npos && text[non_ws] != '#' && text[non_ws] != '.' &&
         text.find(':') == std::string::npos && addr / 4 < words.size()) {
-      line.addresses.push_back(addr);
-      addr += 4;
+      std::istringstream tok_stream(text.substr(non_ws));
+      std::string mnem;
+      tok_stream >> mnem;
+      std::string upper_mnem = mnem;
+      for (char& c : upper_mnem) c = static_cast<char>(std::toupper(c));
+
+      int word_count = 1;
+      if (upper_mnem == "LI") {
+        word_count = 2;
+      } else if (upper_mnem == "PUSH" || upper_mnem == "POP" ||
+                 upper_mnem == "FPUSH" || upper_mnem == "FPOP") {
+        word_count = 2;
+      } else if (upper_mnem == "SPUSH" || upper_mnem == "SPOP" ||
+                 upper_mnem == "SFPUSH" || upper_mnem == "SFPOP") {
+        word_count = 3;
+      }
+
+      for (int w = 0; w < word_count && (addr / 4) < words.size(); ++w) {
+        line.addresses.push_back(addr);
+        addr += 4;
+      }
     }
     lines.push_back(std::move(line));
   }
@@ -97,49 +140,74 @@ Element pane(std::string title, Element content, bool focused) {
          color(focused ? Color::Cyan : Color::RGB(92, 108, 128));
 }
 
-std::string micro_stmt_text(const risc201::cu::PlacedMicroStmt& placed,
-                            risc201::cu::StageLayout layout) {
-  const auto& stmt = placed.stmt;
-  std::ostringstream line;
-  line << std::dec << std::setw(3) << placed.addr << "  "
-       << std::left << std::setw(8) << micro_op_name(stmt.op);
-  switch (stmt.op) {
-    case MicroOp::MMOV:
-      line << internal_reg_name(stmt.dest) << " <- " << internal_reg_name(stmt.src);
-      break;
-    case MicroOp::MMOVI:
-      line << internal_reg_name(stmt.dest) << " <- " << stmt.imm;
-      break;
-    case MicroOp::MADD:
-      line << internal_reg_name(stmt.dest) << " += " << stmt.imm;
-      break;
-    case MicroOp::MBEQ:
-      line << internal_reg_name(stmt.src) << " == " << stmt.imm
-           << " ? " << placed.target;
-      break;
-    case MicroOp::MB:
-      line << "-> " << placed.target;
-      break;
-    default:
-      break;
+inline std::string alu_op_name_str(risc201::cu::AluOp op) {
+  switch (op) {
+    case risc201::cu::AluOp::ADD: return "ADD";
+    case risc201::cu::AluOp::SUB: return "SUB";
+    case risc201::cu::AluOp::MUL: return "MUL";
+    case risc201::cu::AluOp::DIV: return "DIV";
+    case risc201::cu::AluOp::MOD: return "MOD";
+    case risc201::cu::AluOp::AND: return "AND";
+    case risc201::cu::AluOp::OR:  return "OR";
+    case risc201::cu::AluOp::NOT: return "NOT";
+    case risc201::cu::AluOp::XOR: return "XOR";
+    case risc201::cu::AluOp::LSL: return "LSL";
+    case risc201::cu::AluOp::LSR: return "LSR";
+    case risc201::cu::AluOp::ASR: return "ASR";
+    case risc201::cu::AluOp::PASS_A: return "PASS_A";
+    default: return "NOP";
   }
-  if (stmt.args != 0) {
-    const auto unit = risc201::cu::args_unit(stmt.args);
-    const auto op = risc201::cu::args_op(stmt.args);
-    line << "  [" << risc201::cu::unit_name(unit) << ":";
-    if (unit == risc201::cu::UnitId::ALU)
-      line << risc201::cu::alu_op_name(static_cast<risc201::cu::AluOp>(op));
-    else if (unit == risc201::cu::UnitId::REGFILE)
-      line << risc201::cu::reg_op_name(static_cast<risc201::cu::RegOp>(op));
-    else if (unit == risc201::cu::UnitId::MEMORY)
-      line << risc201::cu::mem_op_name(static_cast<risc201::cu::MemOp>(op));
-    else
-      line << static_cast<unsigned>(op);
-    line << ']';
-  }
-  line << "  " << stage_name(layout, stmt.stage);
-  return line.str();
 }
+
+inline std::string op_a_name(risc201::pipeline::OperandASrc src) {
+  switch (src) {
+    case risc201::pipeline::OperandASrc::RS1: return "RS1";
+    case risc201::pipeline::OperandASrc::IMM: return "IMM";
+    case risc201::pipeline::OperandASrc::PC: return "PC";
+    case risc201::pipeline::OperandASrc::ZERO: return "ZERO";
+  }
+  return "RS1";
+}
+
+inline std::string op_b_name(risc201::pipeline::OperandBSrc src) {
+  switch (src) {
+    case risc201::pipeline::OperandBSrc::RS2: return "RS2";
+    case risc201::pipeline::OperandBSrc::IMM: return "IMM";
+    case risc201::pipeline::OperandBSrc::ZERO: return "ZERO";
+  }
+  return "RS2";
+}
+
+inline std::string chk_mode_name(risc201::pipeline::ChkMode mode) {
+  switch (mode) {
+    case risc201::pipeline::ChkMode::STACK_BOUNDS: return "STACK_BOUNDS";
+    case risc201::pipeline::ChkMode::MEMORY_ADDR: return "MEMORY_ADDR";
+    case risc201::pipeline::ChkMode::BNDCHK_INSTR: return "BNDCHK";
+  }
+  return "BYPASS";
+}
+
+inline std::string reg_write_src_name(risc201::pipeline::RegWriteSrc src) {
+  switch (src) {
+    case risc201::pipeline::RegWriteSrc::ALU_OUT: return "ALU_OUT";
+    case risc201::pipeline::RegWriteSrc::MEM_DATA: return "MEM_DATA";
+    case risc201::pipeline::RegWriteSrc::PC_PLUS4: return "PC+4";
+    case risc201::pipeline::RegWriteSrc::FPU_OUT: return "FPU_OUT";
+    case risc201::pipeline::RegWriteSrc::PASS_B: return "PASS_B";
+  }
+  return "NONE";
+}
+
+constexpr std::array<Opcode, 34> kAllOpcodes = {
+    Opcode::NOP, Opcode::ADD, Opcode::SUB, Opcode::MUL, Opcode::DIV, Opcode::MOD,
+    Opcode::AND, Opcode::OR,  Opcode::NOT, Opcode::XOR, Opcode::LSL, Opcode::LSR,
+    Opcode::ASR, Opcode::CMP,
+    Opcode::MOV, Opcode::LD,  Opcode::ST,
+    Opcode::B,   Opcode::BEQ, Opcode::BNE, Opcode::BGT, Opcode::BLT,
+    Opcode::CALL,Opcode::RET, Opcode::BNDCHK, Opcode::HALT,
+    Opcode::FADD,Opcode::FSUB,Opcode::FMUL,Opcode::FDIV,Opcode::FCMP,
+    Opcode::FLD, Opcode::FST, Opcode::FMOV
+};
 
 class SimulatorTui : public ComponentBase {
  public:
@@ -148,7 +216,6 @@ class SimulatorTui : public ComponentBase {
 
   Element Render() override {
     const StateView& view = debugger_.view();
-    const auto& layout = debugger_.cpu().micro_layout();
 
     Elements source_rows;
     if (source_.empty()) {
@@ -197,50 +264,251 @@ class SimulatorTui : public ComponentBase {
     }
 
     Elements micro_rows;
-    const int micro_start = std::max(0, static_cast<int>(view.micro_pc) - 7);
-    const int preamble_end = debugger_.cpu().micro_preamble_len();
-    const auto opcode = static_cast<std::uint8_t>(get_opcode(view.ir));
-    const int routine_start = debugger_.cpu().micro_routine_start(opcode);
-    const int routine_end = debugger_.cpu().micro_routine_end(opcode);
-    for (const auto& placed : layout.stmts) {
-      const int address = placed.addr;
-      const bool in_preamble = address < preamble_end;
-      const bool in_current_routine = address >= routine_start && address < routine_end;
-      if ((!in_preamble && !in_current_routine) || address < micro_start ||
-          address >= micro_start + 18)
-        continue;
-      const bool selected = static_cast<int>(placed.addr) == micro_selection_;
-      const bool active = placed.addr == view.micro_pc;
-      Element row = text(micro_stmt_text(placed, static_cast<risc201::cu::StageLayout>(stages_)));
-      if (active) row = row | color(Color::GreenLight) | bold;
-      if (selected && focus_ == 2) row = row | bgcolor(Color::RGB(46, 58, 76));
-      micro_rows.push_back(row);
+    const Opcode live_op = opcode_of(view.ir);
+    Opcode active_op = live_op;
+    if (selected_op_idx_ >= 0 && selected_op_idx_ < static_cast<int>(kAllOpcodes.size())) {
+      active_op = kAllOpcodes[selected_op_idx_];
     }
-    if (micro_rows.empty()) micro_rows.push_back(text("No microcode loaded"));
+    const bool is_live_tracking = (selected_op_idx_ < 0 || active_op == live_op);
+    const std::uint16_t uop_step = is_live_tracking ? (view.micro_pc & 0x1) : 0;
+    const bool is_complex = (active_op == Opcode::CALL || active_op == Opcode::RET);
+
+    const auto& hw0 = lookup_horizontal_rom(active_op, 0);
+    const auto& hw1 = lookup_horizontal_rom(active_op, 1);
+    const auto& active_hw = (uop_step == 1 && is_complex) ? hw1 : hw0;
+
+    const auto& vw0 = lookup_vertical_rom(active_op, 0);
+    const auto& vw1 = lookup_vertical_rom(active_op, 1);
+    const auto& active_vw = (uop_step == 1 && is_complex) ? vw1 : vw0;
+
+    std::uint64_t raw_hw = 0;
+    std::memcpy(&raw_hw, &active_hw, sizeof(active_hw));
+    raw_hw &= 0x0000FFFFFFFFFFFFULL;
+
+    std::uint32_t raw_vw = 0;
+    std::memcpy(&raw_vw, &active_vw, sizeof(active_vw));
+    raw_vw &= 0x00FFFFFF;
+
+    const std::size_t rom_idx = rom_address(active_op, uop_step);
+
+    micro_rows.push_back(text("--- CONTROL STORE / μ-OP ROM ---") | color(Color::Cyan) | bold);
+    micro_rows.push_back(hbox({
+        text("Opcode: ") | color(Color::GrayLight),
+        text(std::string(opcode_name(active_op))) | color(Color::RGB(238, 190, 92)) | bold,
+        text(" (0x" + hex_value(static_cast<uint8_t>(active_op)) + ")  ") | color(Color::GrayLight),
+        text(vertical_ ? "VERTICAL [24b]" : "HORIZONTAL [48b]") | color(vertical_ ? Color::Yellow : Color::Green) | bold,
+    }));
+    micro_rows.push_back(hbox({
+        text("Type:   ") | color(Color::GrayLight),
+        text(is_complex ? "CRACKED SEQUENCE (2 uops)" : "FAST-PATH RISC (1 uop, CPI=1.0)") |
+            color(is_complex ? Color::Yellow : Color::GreenLight) | bold,
+    }));
+    micro_rows.push_back(hbox({
+        text("ROM:    0x" + hex_value(rom_idx) + " (Step uop " + std::to_string(uop_step) + ")  ") | color(Color::GrayLight),
+        text("Word: 0x" + hex_value(vertical_ ? raw_vw : raw_hw)) | color(Color::White) | bold,
+    }));
+    micro_rows.push_back(separator());
+
+    micro_rows.push_back(text("CRACKING SEQUENCE:") | bold | color(Color::Yellow));
+    if (active_op == Opcode::CALL) {
+      const bool step0_active = is_live_tracking && (uop_step == 0);
+      const bool step1_active = is_live_tracking && (uop_step == 1);
+      Element row0 = text((step0_active ? " -> " : "    ") + std::string("uop 0: ALU SUB (SP = SP - 4) | [CHK] STACK_BOUNDS | [SEQ] FREEZE"));
+      if (step0_active) row0 = row0 | color(Color::GreenLight) | bold;
+      else row0 = row0 | color(Color::RGB(160, 180, 200));
+
+      Element row1 = text((step1_active ? " -> " : "    ") + std::string("uop 1: MEM STORE [SP] <= PC+4 | [EX] BR TARGET | [WB] RETIRE"));
+      if (step1_active) row1 = row1 | color(Color::GreenLight) | bold;
+      else row1 = row1 | color(Color::RGB(160, 180, 200));
+
+      micro_rows.push_back(row0);
+      micro_rows.push_back(row1);
+    } else if (active_op == Opcode::RET) {
+      const bool step0_active = is_live_tracking && (uop_step == 0);
+      const bool step1_active = is_live_tracking && (uop_step == 1);
+      Element row0 = text((step0_active ? " -> " : "    ") + std::string("uop 0: MEM LOAD RA <= [SP] | [CHK] STACK_BOUNDS | [SEQ] FREEZE"));
+      if (step0_active) row0 = row0 | color(Color::GreenLight) | bold;
+      else row0 = row0 | color(Color::RGB(160, 180, 200));
+
+      Element row1 = text((step1_active ? " -> " : "    ") + std::string("uop 1: ALU ADD (SP = SP + 4) | [EX] BR RA | [WB] RETIRE"));
+      if (step1_active) row1 = row1 | color(Color::GreenLight) | bold;
+      else row1 = row1 | color(Color::RGB(160, 180, 200));
+
+      micro_rows.push_back(row0);
+      micro_rows.push_back(row1);
+    } else if (active_op == Opcode::BNDCHK) {
+      Element row0 = text(" -> uop 0: ALU ADD (RS1 + IMM) | [CHK] BNDCHK_INSTR | [EX] VERIFY_RANGE") |
+                     color(Color::GreenLight) | bold;
+      micro_rows.push_back(row0);
+    } else {
+      Element row0 = text(" -> uop 0: Fast-Path 1-cycle direct issue into EX stage | CPI = 1.0") |
+                     color(Color::GreenLight) | bold;
+      micro_rows.push_back(row0);
+    }
+
+    micro_rows.push_back(separator());
+    micro_rows.push_back(text("STAGE SIGNALS (DECODED ROM WIRES):") | bold | color(Color::Yellow));
+    micro_rows.push_back(text(" [OF] OpA=" + op_a_name(static_cast<risc201::pipeline::OperandASrc>(active_hw.op_a_src)) +
+                              "  OpB=" + op_b_name(static_cast<risc201::pipeline::OperandBSrc>(active_hw.op_b_src))) |
+                         color(Color::RGB(170, 205, 240)));
+    micro_rows.push_back(text(" [EX] ALU=" + alu_op_name_str(static_cast<risc201::cu::AluOp>(active_hw.alu_op)) +
+                              "  SetFlags=" + (active_hw.set_flags ? "1" : "0") +
+                              "  Branch=" + (active_hw.is_branch ? "YES" : "NO")) |
+                         color(Color::RGB(170, 205, 240)));
+    micro_rows.push_back(text(" [CHK] SafetyEn=" + std::to_string(active_hw.chk_enable) +
+                              "  Mode=" + chk_mode_name(static_cast<risc201::pipeline::ChkMode>(active_hw.chk_mode))) |
+                         color(Color::RGB(170, 205, 240)));
+    micro_rows.push_back(text(" [MA] Read=" + std::to_string(active_hw.mem_read) +
+                              "  Write=" + std::to_string(active_hw.mem_write) +
+                              "  Domain=" + (active_hw.ma_is_fpu ? "FPR" : "GPR")) |
+                         color(Color::RGB(170, 205, 240)));
+    micro_rows.push_back(text(" [WB] RegWrite=" + std::to_string(active_hw.reg_write_en) +
+                              "  Src=" + reg_write_src_name(static_cast<risc201::pipeline::RegWriteSrc>(active_hw.reg_write_src)) +
+                              "  Domain=" + (active_hw.wb_is_fpu ? "FPR" : "GPR")) |
+                         color(Color::RGB(170, 205, 240)));
+    micro_rows.push_back(text(" [SEQ] freeze=" + std::to_string(active_hw.freeze_if_of) +
+                              "  multi=" + std::to_string(active_hw.is_multi_uop) +
+                              "  last=" + std::to_string(active_hw.is_last_uop)) |
+                         color(Color::RGB(170, 205, 240)));
+
+    if (!is_live_tracking) {
+      micro_rows.push_back(separator());
+      micro_rows.push_back(text("[BROWSING ROM - Esc/c to return to live pipeline]") | color(Color::Yellow) | bold);
+    }
+
+    const std::string stage_str = (view.stage && view.stage[0] != '\0') ? view.stage : (stages_ == 4 ? "4-STAGE" : "6-STAGE");
 
     Elements execution_rows = {
-        text("PC       0x" + hex_value(view.pc)) | color(Color::Cyan),
-        text("IR       0x" + hex_value(view.ir)) | color(Color::White),
-        text("Opcode   " + std::string(opcode_name(opcode_of(view.ir)))) |
+        text("Retire PC  0x" + hex_value(view.pc)) | color(Color::Cyan),
+        text("Fetch PC   0x" + hex_value(debugger_.cpu().pipe().fetch_pc())) | color(Color::CyanLight),
+        text("Decode IR  0x" + hex_value(view.ir) + " (" + std::string(opcode_name(opcode_of(view.ir))) + ")") |
             color(Color::RGB(238, 190, 92)) | bold,
-        text("Mode     " + std::string(view.stage) + " / " + (vertical_ ? "Vertical" : "Horizontal")) |
+        text("Mode       " + stage_str + " / " + (vertical_ ? "Vertical" : "Horizontal")) |
             color(Color::Cyan),
-        text("Flags    Z=" + bit(view.flags.Z) + " N=" + bit(view.flags.N) +
+        text("Flags      Z=" + bit(view.flags.Z) + " N=" + bit(view.flags.N) +
              " C=" + bit(view.flags.C) + " V=" + bit(view.flags.V)) |
             color(Color::RGB(160, 190, 220)),
         separator(),
         text("PIPELINE STAGE LATCHES") | bold | color(Color::Yellow),
-        text("[IF]  PC=0x" + hex_value(view.if_of.pc) + " RAW=0x" + hex_value(view.if_of.raw)),
-        text("[OF]  OP=" + std::string(opcode_name(view.of_ex.opcode)) + " RD=r" + std::to_string(view.of_ex.rd) +
-             " RS1=r" + std::to_string(view.of_ex.rs1) + " RS2=r" + std::to_string(view.of_ex.rs2)),
-        text("[EX]  ALU=0x" + hex_value(view.ex_stage.alu_result) + " ADDR=0x" + hex_value(view.ex_stage.effective_addr) +
-             " VAL=0x" + hex_value(view.ex_stage.store_val)),
     };
-    if (stages_ == 6) {
-      execution_rows.push_back(text("[CHK] ADDR=0x" + hex_value(view.chk_ma.verified_addr)));
+
+    // [IF/OF] Latch
+    if (!view.if_of.valid || view.if_of.bubble) {
+      execution_rows.push_back(text("[IF/OF]  [BUBBLE / FLUSH]") | color(Color::RGB(120, 140, 160)));
+    } else {
+      execution_rows.push_back(text("[IF/OF]  PC=0x" + hex_value(view.if_of.pc) +
+                                    " RAW=0x" + hex_value(view.if_of.raw) +
+                                    " (" + std::string(opcode_name(opcode_of(view.if_of.raw))) + ")"));
     }
-    execution_rows.push_back(text("[WB]  RD=" + std::string(view.ma_rw.is_fpu_reg ? "f" : "r") + std::to_string(view.ma_rw.rd) +
-                                  " DATA=0x" + hex_value(view.ma_rw.wb_data)));
+
+    // [OF/EX] Latch
+    if (!view.of_ex.valid || view.of_ex.bubble) {
+      execution_rows.push_back(text("[OF/EX]  [BUBBLE / STALL]") | color(Color::RGB(120, 140, 160)));
+    } else {
+      std::string of_str = "[OF/EX]  OP=" + std::string(opcode_name(view.of_ex.opcode));
+      if (view.of_ex.rd != 0 || view.of_ex.control.wb.reg_write_en) {
+        of_str += " RD=" + std::string(view.of_ex.dest_is_fpu ? "f" : "r") + std::to_string(view.of_ex.rd);
+      }
+      of_str += " RS1=" + std::string(view.of_ex.rs1_is_fpu ? "f" : "r") + std::to_string(view.of_ex.rs1) +
+                "(0x" + hex_value(view.of_ex.rs1_val) + ")";
+      if (view.of_ex.control.ex.operand_b_src == risc201::cu::OperandBSrc::IMM) {
+        of_str += " IMM=0x" + hex_value(view.of_ex.imm32);
+      } else {
+        of_str += " RS2=" + std::string(view.of_ex.rs2_is_fpu ? "f" : "r") + std::to_string(view.of_ex.rs2) +
+                  "(0x" + hex_value(view.of_ex.rs2_val) + ")";
+      }
+      execution_rows.push_back(text(of_str));
+    }
+
+    // [EX/CHK] (6-stage) or [EX/MA] (4-stage) Latch
+    if (!view.ex_stage.valid || view.ex_stage.bubble) {
+      execution_rows.push_back(text(stages_ == 6 ? "[EX/CHK] [BUBBLE]" : "[EX/MA]  [BUBBLE]") |
+                               color(Color::RGB(120, 140, 160)));
+    } else {
+      std::string ex_str = (stages_ == 6 ? "[EX/CHK] " : "[EX/MA]  ");
+      ex_str += "ALU=0x" + hex_value(view.ex_stage.alu_result);
+      if (view.ex_stage.control.ma.mem_read || view.ex_stage.control.ma.mem_write ||
+          view.ex_stage.control.chk.memchk_enable || view.ex_stage.control.ex.is_call ||
+          view.ex_stage.control.ex.is_ret) {
+        ex_str += " ADDR=0x" + hex_value(view.ex_stage.effective_addr);
+      }
+      if (view.ex_stage.control.ma.mem_write) {
+        ex_str += " VAL=0x" + hex_value(view.ex_stage.store_val);
+      }
+      if (view.ex_stage.branch_taken) {
+        ex_str += " [BR -> 0x" + hex_value(view.ex_stage.target_pc) + "]";
+      }
+      execution_rows.push_back(text(ex_str));
+    }
+
+    // 6-stage latches: [CHK/MA], [MA/WB], [COMMIT]
+    if (stages_ == 6) {
+      // [CHK/MA]
+      if (!view.chk_ma.valid || view.chk_ma.bubble) {
+        execution_rows.push_back(text("[CHK/MA] [BUBBLE]") | color(Color::RGB(120, 140, 160)));
+      } else if (view.chk_ma.control.chk.memchk_enable) {
+        execution_rows.push_back(hbox({
+            text("[CHK/MA] ADDR=0x" + hex_value(view.chk_ma.verified_addr) + " "),
+            text("[VERIFIED SAFE]") | color(Color::Green) | bold,
+        }));
+      } else if (view.chk_ma.control.ma.mem_read || view.chk_ma.control.ma.mem_write ||
+                 view.chk_ma.control.ex.is_call || view.chk_ma.control.ex.is_ret) {
+        execution_rows.push_back(text("[CHK/MA] ADDR=0x" + hex_value(view.chk_ma.verified_addr) +
+                                      " [STACK/PASS]") | color(Color::White));
+      } else {
+        execution_rows.push_back(text("[CHK/MA] [BYPASS - NO MEM ACCESS]") | color(Color::RGB(120, 140, 160)));
+      }
+
+      // [MA/WB]
+      if (!view.ma_rw.valid || view.ma_rw.bubble) {
+        execution_rows.push_back(text("[MA/WB]  [BUBBLE]") | color(Color::RGB(120, 140, 160)));
+      } else if (view.ma_rw.control.ma.mem_read) {
+        execution_rows.push_back(text("[MA/WB]  LOAD DATA=0x" + hex_value(view.ma_rw.wb_data) +
+                                      " -> " + (view.ma_rw.is_fpu_reg ? "f" : "r") +
+                                      std::to_string(view.ma_rw.rd)) | color(Color::Cyan));
+      } else if (view.ma_rw.control.ma.mem_write) {
+        execution_rows.push_back(text("[MA/WB]  STORE OK [0x" + hex_value(view.chk_ma.verified_addr) +
+                                      "] <= 0x" + hex_value(view.chk_ma.store_val)) |
+                                 color(Color::GreenLight));
+      } else if (view.ma_rw.control.wb.reg_write_en && view.ma_rw.rd != 0) {
+        execution_rows.push_back(text("[MA/WB]  ALU DATA=0x" + hex_value(view.ma_rw.wb_data) +
+                                      " -> " + (view.ma_rw.is_fpu_reg ? "f" : "r") +
+                                      std::to_string(view.ma_rw.rd)));
+      } else {
+        execution_rows.push_back(text("[MA/WB]  [PASS-THROUGH]") | color(Color::RGB(120, 140, 160)));
+      }
+
+      // [COMMIT]
+      if (view.ma_rw.valid && !view.ma_rw.bubble) {
+        if (view.ma_rw.control.halt) {
+          execution_rows.push_back(text("[COMMIT] HALTED") | color(Color::Red) | bold);
+        } else if (view.ma_rw.control.wb.reg_write_en && view.ma_rw.rd != 0) {
+          execution_rows.push_back(text("[COMMIT] " + std::string(view.ma_rw.is_fpu_reg ? "f" : "r") +
+                                        std::to_string(view.ma_rw.rd) + " <= 0x" +
+                                        hex_value(view.ma_rw.wb_data)) | color(Color::Green) | bold);
+        } else {
+          execution_rows.push_back(text("[COMMIT] RETIRED (NO REG WRITE)") | color(Color::GrayLight));
+        }
+      } else {
+        execution_rows.push_back(text("[COMMIT] [IDLE]") | color(Color::RGB(120, 140, 160)));
+      }
+    } else {
+      // 4-stage [COMMIT]
+      if (view.ex_stage.valid && !view.ex_stage.bubble) {
+        if (view.ex_stage.control.halt) {
+          execution_rows.push_back(text("[COMMIT] HALTED") | color(Color::Red) | bold);
+        } else if (view.ex_stage.control.wb.reg_write_en && view.ex_stage.rd != 0) {
+          execution_rows.push_back(text("[COMMIT] " + std::string(view.ex_stage.is_fpu_reg ? "f" : "r") +
+                                        std::to_string(view.ex_stage.rd) + " <= 0x" +
+                                        hex_value(view.ma_rw.wb_data)) | color(Color::Green) | bold);
+        } else {
+          execution_rows.push_back(text("[COMMIT] RETIRED") | color(Color::GrayLight));
+        }
+      } else {
+        execution_rows.push_back(text("[COMMIT] [IDLE]") | color(Color::RGB(120, 140, 160)));
+      }
+    }
+
     execution_rows.push_back(separator());
     execution_rows.push_back(text("Cycles: " + std::to_string(view.stats.total_cycles) +
                                   "  Ret: " + std::to_string(view.stats.instructions_retired) +
@@ -273,18 +541,19 @@ class SimulatorTui : public ComponentBase {
 
     Element header = hbox({
         text(" RISC201 ") | bold | color(Color::Black) | bgcolor(Color::Cyan),
-        text("  " + std::to_string(stages_) + "-stage ") | color(Color::GrayLight),
+        text("  " + std::to_string(stages_) + "-STAGE ") | color(Color::White) | bold,
         text(vertical_ ? "VERTICAL" : "HORIZONTAL") |
-            color(vertical_ ? Color::Yellow : Color::Green),
+            color(vertical_ ? Color::Yellow : Color::Green) | bold,
         filler(),
-        text(status_text(debugger_)) | color(status_color(debugger_)) | bold,
-        text("  PC 0x" + hex_value(view.pc) + " ") | color(Color::GrayLight),
+        text(" " + status_text(debugger_) + " ") | color(status_color(debugger_)) | bold,
+        text(" | PC: 0x" + hex_value(view.pc) + " | Fetch: 0x" +
+             hex_value(debugger_.cpu().pipe().fetch_pc()) + " ") | color(Color::CyanLight),
     });
 
     Elements upper = {
         pane("SOURCE  " + source_name_, vbox(std::move(source_rows)), focus_ == 0) | flex,
         pane("REGISTERS", vbox(std::move(register_rows)), focus_ == 1),
-        pane("MICROINSTRUCTIONS", vbox(std::move(micro_rows)), focus_ == 2) | flex,
+        pane("CONTROL STORE / μ-OP ROM", vbox(std::move(micro_rows)), focus_ == 2) | flex,
     };
     Elements lower = {
         pane("EXECUTION / INTERNAL STATE", vbox(std::move(execution_rows)), focus_ == 3) | flex,
@@ -292,13 +561,18 @@ class SimulatorTui : public ComponentBase {
              focus_ == 4) | flex,
     };
 
-    Element footer = hbox({
-        text(" ↓/s forward  ↑/u back  m/↑↓ micro-step  r run/pause  b break  Tab pane  ") |
-            color(Color::GrayLight),
-        text("o open asm  v stack/mem  g address  x reset  ? help  q quit ") |
-            color(Color::GrayLight),
-        filler(), text(message_) |
-            color(message_error_ ? Color::Red : Color::RGB(100, 220, 150)) | bold,
+    Element footer = vbox({
+        hbox({
+            text(" s:step  u:back  m:micro  r:run  b:break  Tab:pane  o:open  v:stack/mem  g:addr  x:reset  ?:help  q:quit") |
+                color(Color::GrayLight),
+            filler(),
+            text(running_ ? "[RUNNING]" : "[PAUSED]") | color(running_ ? Color::GreenLight : Color::Yellow) | bold,
+        }),
+        hbox({
+            text(" Status: ") | color(Color::Cyan) | bold,
+            text(message_.empty() ? "Ready" : message_) |
+                color(message_error_ ? Color::Red : Color::RGB(100, 220, 150)) | bold,
+        }),
     });
 
     Element root = vbox({header, separator(), hbox(std::move(upper)) | flex,
@@ -352,11 +626,28 @@ class SimulatorTui : public ComponentBase {
         if (forward) step_source();
         else step_back_instruction();
       } else if (focus_ == 2) {
-        if (forward) step_micro();
-        else step_back_micro();
+        if (selected_op_idx_ < 0) {
+          const auto cur_op = opcode_of(debugger_.view().ir);
+          int found = 0;
+          for (int i = 0; i < static_cast<int>(kAllOpcodes.size()); ++i) {
+            if (kAllOpcodes[i] == cur_op) { found = i; break; }
+          }
+          selected_op_idx_ = found;
+        }
+        if (forward) {
+          selected_op_idx_ = std::min(static_cast<int>(kAllOpcodes.size() - 1), selected_op_idx_ + 1);
+        } else {
+          selected_op_idx_ = std::max(0, selected_op_idx_ - 1);
+        }
+        message_ = "Browsing ROM for " + std::string(opcode_name(kAllOpcodes[selected_op_idx_]));
       } else {
         focus_ = (focus_ + (forward ? 1 : 4)) % 5;
       }
+      return true;
+    }
+    if (event == Event::Character('c')) {
+      selected_op_idx_ = -1;
+      message_ = "Tracking live pipeline instruction";
       return true;
     }
     if (event == Event::Character('s')) {
@@ -415,7 +706,7 @@ class SimulatorTui : public ComponentBase {
         active_instruction_address_ = text_base_;
         current_source_line_ = -1;
         source_selection_ = first_executable_line();
-        micro_selection_ = 0;
+        selected_op_idx_ = -1;
         message_ = "program reloaded at entry";
       }
       return true;
@@ -468,7 +759,29 @@ class SimulatorTui : public ComponentBase {
     return input_component_->OnEvent(event);
   }
 
-  void assemble_file(const std::string& path) {
+  void assemble_file(const std::string& input_path) {
+    std::string path = input_path;
+    while (!path.empty() && (path.front() == ' ' || path.front() == '\t')) path.erase(path.begin());
+    while (!path.empty() && (path.back() == ' ' || path.back() == '\t' || path.back() == '\r' || path.back() == '\n')) path.pop_back();
+
+    if (path.empty()) {
+      message_ = "No file path specified";
+      message_error_ = true;
+      return;
+    }
+
+    if (!std::ifstream(path).good()) {
+      if (std::ifstream("tests/programs/" + path).good()) {
+        path = "tests/programs/" + path;
+      } else if (std::ifstream("../tests/programs/" + path).good()) {
+        path = "../tests/programs/" + path;
+      } else {
+        message_ = "File not found: " + path;
+        message_error_ = true;
+        return;
+      }
+    }
+
     std::string hex_file = path;
     const std::string source = read_file(path);
     std::vector<Word> text_words;
@@ -476,10 +789,29 @@ class SimulatorTui : public ComponentBase {
 
     if (path.size() >= 4 && path.substr(path.size() - 4) == ".asm") {
       hex_file = path.substr(0, path.size() - 4) + ".hex";
-      std::string cmd = "risc201asm \"" + path + "\" \"" + hex_file + "\" --hex";
+      std::string asm_bin = find_risc201asm_bin();
+      std::string win_asm = asm_bin;
+      std::replace(win_asm.begin(), win_asm.end(), '/', '\\');
+      std::string win_path = path;
+      std::replace(win_path.begin(), win_path.end(), '/', '\\');
+      std::string win_hex = hex_file;
+      std::replace(win_hex.begin(), win_hex.end(), '/', '\\');
+      const std::string err_file = hex_file + ".err";
+      std::string win_err = err_file;
+      std::replace(win_err.begin(), win_err.end(), '/', '\\');
+
+      std::string cmd = "\"\"" + win_asm + "\" \"" + win_path + "\" \"" + win_hex + "\" --hex > \"" + win_err + "\" 2>&1\"";
       const int ret = std::system(cmd.c_str());
       if (ret != 0) {
-        message_ = "assembler error running risc201asm on " + path;
+        std::ifstream err_in(err_file);
+        std::string err_msg;
+        if (err_in.is_open()) {
+          std::getline(err_in, err_msg);
+        }
+        if (err_msg.empty()) {
+          err_msg = "Assembler failed on " + path;
+        }
+        message_ = err_msg;
         message_error_ = true;
         return;
       }
@@ -520,7 +852,7 @@ class SimulatorTui : public ComponentBase {
     active_instruction_address_ = text_base_;
     current_source_line_ = -1;
     source_selection_ = first_executable_line();
-    micro_selection_ = 0;
+    selected_op_idx_ = -1;
     message_ = "assembled and loaded " + path;
     message_error_ = false;
   }
@@ -550,22 +882,20 @@ class SimulatorTui : public ComponentBase {
     } else {
       message_ = "stepped instruction at 0x" + hex_value(active_instruction_address_);
     }
-    active_instruction_address_ = debugger_.at_instruction_boundary()
-                                      ? debugger_.view().pc
-                                      : debugger_.active_instruction_address();
-    current_source_line_ = source_line_for_address(active_instruction_address_);
-    if (current_source_line_ >= 0) source_selection_ = current_source_line_;
-    sync_micro_selection();
+    sync_execution_selection();
   }
 
   void step_micro() {
     if (!loaded_image_ || debugger_.cpu().halted()) return;
     stop_running();
-    if (debugger_.cpu().micro_pc() == 0)
+    if (debugger_.at_instruction_boundary())
       active_instruction_address_ = debugger_.cpu().pc();
     debugger_.step_micro();
     sync_execution_selection();
-    message_ = "micro-PC " + std::to_string(debugger_.view().micro_pc);
+    const auto op = opcode_of(debugger_.view().ir);
+    message_ = "micro-step: Opcode " + std::string(opcode_name(op)) +
+               " (uop " + std::to_string(debugger_.view().micro_pc & 0x1) +
+               ", ROM 0x" + hex_value(debugger_.view().micro_pc) + ")";
   }
 
   void step_back_micro() {
@@ -589,17 +919,11 @@ class SimulatorTui : public ComponentBase {
   }
 
   void sync_execution_selection() {
-    const StateView& view = debugger_.view();
-    micro_selection_ = view.micro_pc;
     active_instruction_address_ = debugger_.at_instruction_boundary()
-                                      ? view.pc
+                                      ? debugger_.view().pc
                                       : debugger_.active_instruction_address();
     current_source_line_ = source_line_for_address(active_instruction_address_);
     if (current_source_line_ >= 0) source_selection_ = current_source_line_;
-  }
-
-  void sync_micro_selection() {
-    micro_selection_ = debugger_.cpu().micro_pc();
   }
 
   void stop_running() { running_ = false; }
@@ -622,10 +946,7 @@ class SimulatorTui : public ComponentBase {
           }
         }
         debugger_.step_instruction();
-        active_instruction_address_ = debugger_.active_instruction_address();
-        current_source_line_ = source_line_for_address(active_instruction_address_);
-        if (current_source_line_ >= 0) source_selection_ = current_source_line_;
-        sync_micro_selection();
+        sync_execution_selection();
       }
       screen_->RequestAnimationFrame();
       if (running_) schedule_run_batch();
@@ -651,7 +972,7 @@ class SimulatorTui : public ComponentBase {
   std::vector<SourceLine> source_;
   int source_selection_ = 0;
   int current_source_line_ = -1;
-  int micro_selection_ = 0;
+  int selected_op_idx_ = -1;
   std::string source_name_ = "no source loaded";
   std::string message_ = "press o to open an .asm file";
   bool message_error_ = false;

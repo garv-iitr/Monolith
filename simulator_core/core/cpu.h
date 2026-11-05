@@ -14,7 +14,6 @@
 #include "isa_spec/isa.h"
 #include "memory_safety/memory_map.h"
 #include "memory_safety/visualizer.h"
-#include "control_unit/routine_layout.h"
 #include "simulator_core/core/exception.h"
 #include "simulator_core/core/state_view.h"
 
@@ -32,10 +31,7 @@ class Cpu {
   explicit Cpu(std::size_t mem_words = risc201::cu::MemoryUnit::kDefaultWords,
                risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE,
                ControlEncoding encoding = ControlEncoding::HORIZONTAL)
-      : pipe_(layout, encoding == ControlEncoding::VERTICAL, mem_words, true) {
-    const risc201::cu::Program program = risc201::cu::build_program(layout);
-    micro_layout_ = risc201::cu::layout_program(program);
-  }
+      : pipe_(layout, encoding == ControlEncoding::VERTICAL, mem_words, true) {}
 
   void load(const std::vector<Word>& code) {
     pipe_.load(code, 0);
@@ -190,29 +186,6 @@ class Cpu {
   const risc201::pipeline::PipelineProcessor& pipe() const { return pipe_; }
   risc201::pipeline::PipelineProcessor& pipe() { return pipe_; }
 
-  std::uint16_t micro_routine_start(std::uint8_t opcode) const {
-    return micro_layout_.entry_of(static_cast<Opcode>(opcode));
-  }
-
-  std::uint16_t micro_routine_end(std::uint8_t opcode) const {
-    const std::uint16_t start = micro_routine_start(opcode);
-    std::uint16_t end = static_cast<std::uint16_t>(micro_layout_.stmts.size());
-    for (const auto& e : micro_layout_.entries)
-      if (e.second > start && e.second < end) end = e.second;
-    return end;
-  }
-
-  std::uint16_t micro_preamble_len() const {
-    std::uint16_t first = static_cast<std::uint16_t>(micro_layout_.stmts.size());
-    for (const auto& e : micro_layout_.entries)
-      if (e.second < first) first = e.second;
-    return first;
-  }
-
-  const risc201::cu::MicroProgramLayout& micro_layout() const {
-    return micro_layout_;
-  }
-
   StateView snapshot() const {
     StateView v;
     v.pc = pipe_.pc();
@@ -255,7 +228,6 @@ class Cpu {
 
  private:
   risc201::pipeline::PipelineProcessor pipe_;
-  risc201::cu::MicroProgramLayout micro_layout_;
 };
 
 }  // namespace risc201
