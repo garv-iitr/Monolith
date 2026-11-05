@@ -37,6 +37,26 @@ bool StackGuard::addr_ok(Word addr, Word size, bool is_write) const {
   return size <= limit_ - addr;
 }
 
+::RuntimeException StackGuard::check_access(Word addr, Word sp, Word size,
+                                            bool is_write, Word pc) const {
+  if (addr % MemoryMap::kWordBytes != 0 ||
+      size % MemoryMap::kWordBytes != 0 || size == 0) {
+    return {::ExceptionCode::MISALIGNED_ACCESS, addr};
+  }
+
+  if (addr >= limit_ && addr < base_) {
+    if (sp % MemoryMap::kWordBytes != 0) {
+      return {::ExceptionCode::MISALIGNED_ACCESS, sp};
+    }
+    if (sp < limit_) return {::ExceptionCode::STACK_OVERFLOW, sp};
+    if (sp >= base_) return {::ExceptionCode::STACK_UNDERFLOW, addr};
+    if (addr < sp) return {::ExceptionCode::STACK_OVERFLOW, addr};
+    return {};
+  }
+
+  return check_mem(addr, size, is_write, pc);
+}
+
 ::RuntimeException StackGuard::check_push(Word sp, Word pc) const {
   ::RuntimeException e;
   e.address = sp;

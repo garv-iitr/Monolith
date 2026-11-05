@@ -59,17 +59,23 @@ void PipelineProcessor::run(std::size_t max_cycles) {
 void PipelineProcessor::check_memory_safety(Word addr, const ChkControl& chk) {
   if (!runtime_safety_ || !chk.memchk_enable) return;
 
-  if (addr % 4 != 0) {
+  if (addr % safety::MemoryMap::kWordBytes != 0) {
     throw RuntimeException{ExceptionCode::MISALIGNED_ACCESS, addr};
   }
   if (chk.chk_mode == ChkMode::STACK_BOUNDS) {
     if (addr < stack_guard_.limit()) {
       throw RuntimeException{ExceptionCode::STACK_OVERFLOW, addr};
     }
-    if (addr > stack_guard_.base()) {
+    if (addr >= stack_guard_.base()) {
       throw RuntimeException{ExceptionCode::STACK_UNDERFLOW, addr};
     }
+    return;
   }
+
+  const RuntimeException fault = stack_guard_.check_access(
+      addr, regs_[REG_SP], static_cast<Word>(safety::MemoryMap::kWordBytes),
+      false, pc_);
+  if (fault.code != ExceptionCode::NONE) throw fault;
 }
 
 bool PipelineProcessor::step() {

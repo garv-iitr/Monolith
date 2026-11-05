@@ -38,6 +38,8 @@ class StackGuard {
   bool frame_ok(Word sp, Word size) const;
   bool addr_ok(Word addr, Word size, bool is_write) const;
 
+  ::RuntimeException check_access(Word addr, Word sp, Word size,
+                                  bool is_write, Word pc) const;
   ::RuntimeException check_push(Word sp, Word pc) const;
   ::RuntimeException check_pop(Word sp, Word pc) const;
   ::RuntimeException check_mem(Word addr, Word size, bool is_write, Word pc) const;
