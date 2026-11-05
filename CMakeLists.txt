@@ -107,7 +107,19 @@ target_link_libraries(stack-visualizer-test PRIVATE risc201_safety)
 target_compile_options(stack-visualizer-test PRIVATE -Wall -Wextra)
 add_test(NAME stack-visualizer-test COMMAND stack-visualizer-test)
 
-# Assembler & Disassembler Toolchain Integration Test
-add_test(NAME toolchain-asm-fib COMMAND risc201asm "${CMAKE_CURRENT_SOURCE_DIR}/tests/programs/fib.asm" "${CMAKE_CURRENT_BINARY_DIR}/fib.hex" --hex)
-add_test(NAME toolchain-dis-fib COMMAND risc201dis "${CMAKE_CURRENT_BINARY_DIR}/fib.hex")
-set_tests_properties(toolchain-dis-fib PROPERTIES DEPENDS toolchain-asm-fib)
+# Assembler & Disassembler Toolchain Integration Tests
+macro(add_toolchain_test test_name asm_file)
+  add_test(NAME toolchain-asm-${test_name} COMMAND risc201asm "${CMAKE_CURRENT_SOURCE_DIR}/tests/programs/${asm_file}" "${CMAKE_CURRENT_BINARY_DIR}/${test_name}.hex" --hex)
+  add_test(NAME toolchain-dis-${test_name} COMMAND risc201dis "${CMAKE_CURRENT_BINARY_DIR}/${test_name}.hex")
+  set_tests_properties(toolchain-dis-${test_name} PROPERTIES DEPENDS toolchain-asm-${test_name})
+endmacro()
+
+add_toolchain_test(fib fib.asm)
+add_toolchain_test(fac fac.asm)
+add_toolchain_test(matmul matmul.asm)
+add_toolchain_test(sort sort.asm)
+add_toolchain_test(alu alu_ops.asm)
+add_toolchain_test(cf control_flow.asm)
+add_toolchain_test(fpu fpu_ops.asm)
+add_toolchain_test(mem memory_ops.asm)
+add_toolchain_test(all34 all_34_opcodes.asm)
