@@ -38,8 +38,8 @@
 | **BNE** | `0x22` | `100010` | If Z==0, `PC = target` |
 | **BGT** | `0x23` | `100011` | If N==0 & Z==0, `PC = target` |
 | **BLT** | `0x24` | `100100` | If N==1, `PC = target` |
-| **CALL** | `0x25` | `100101` | Push PC, `PC = target` |
-| **RET** | `0x26` | `100110` | Pop PC |
+| **CALL** | `0x25` | `100101` | Push return PC to the program and shadow stacks, `PC = target` |
+| **RET** | `0x26` | `100110` | Verify popped PC against the shadow stack, then return |
 | **BNDCHK** | `0x27` | `100111` | Verify stack/address bounds |
 | **HALT** | `0x28` | `101000` | Exit current execution context |
 
@@ -121,6 +121,14 @@ The offset is in words, PC-relative. **Instructions:** B, BEQ, BNE, BGT, BLT, CA
 | `opcode` | `26 zero bits` |
 
 **Instructions:** NOP, RET, HALT
+
+CALL maintains a protected, simulator-internal copy of each return address.
+RET compares the value read from the ordinary stack with the shadow-stack top
+before transferring control or incrementing SP. A mismatch (including a RET
+without a corresponding CALL) halts with a `shadow stack mismatch` runtime
+fault. Stack bounds faults, such as RET at the empty stack, remain
+`STACK_UNDERFLOW`. This is return-address integrity for backward edges; it is
+not complete control-flow integrity and does not model Intel CET or ARM PAC.
 
 **Format 7: FPU three-register**
 

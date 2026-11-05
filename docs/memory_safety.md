@@ -18,15 +18,26 @@ execution. CALL push checks run in both pipeline layouts; the 4-stage CALL
 preflight occurs before the SP update, and the matrix verifies that an overflow
 leaves SP and the target stack word unchanged.
 
-The integrated CPU regression matrix exercises 14 cases under each of
+The CPU also maintains a protected, internal shadow return stack. Each
+successful CALL mirrors its saved return PC there; RET compares the ordinary
+stack's return value against the shadow top before changing SP or transferring
+control. A mismatch halts with `SHADOW_STACK_MISMATCH` and reports the stack
+slot address. Shadow state is reset with the CPU and included in checkpoints,
+so debugger reverse execution restores it along with the datapath and memory.
+This protects return addresses (backward-edge integrity) only; it is not
+complete CFI, and it is not an implementation equivalent to Intel CET or ARM
+PAC.
+
+The integrated CPU regression matrix exercises 17 cases under each of
 4-stage horizontal, 4-stage vertical, 6-stage horizontal, and 6-stage vertical
 execution: successful CALL/RET; CALL overflow; empty-stack RET underflow;
 valid data-region ST/LD; store below current SP; misaligned stack load;
 invalid and misaligned integer LD/ST; and invalid and misaligned FP FLD/FST.
+It also tests corrupted and unmatched return addresses and nested CALL/RET.
 Invalid stores verify the target word was not modified; the valid data
 round-trip verifies both value preservation and that an adjacent stack word
-is unchanged. The measured result is `56/56 cases passed`; all four CTest
-targets pass. These are executable functional regression results, not
+is unchanged. The updated matrix passed `68/68` cases. These are executable
+functional regression results, not
 performance benchmarks or an exhaustive proof of memory safety.
 
 The FP cases verify memory-address fault detection and, for FST, absence of a
@@ -86,7 +97,7 @@ The observed result is a halted CPU with `FAULT: bad memory access @ 0x0`.
 The test matrix also verifies stack overflow/underflow and misaligned-access
 faults by checking their fault codes and addresses.
 
-## Planned work (not claimed as implemented)
+## Remaining work
 
 The on-demand and opt-in instruction-trace modes are verified. The trace
 reports word-level stack changes and the runtime's CALL/RET boundaries; it is
