@@ -204,9 +204,16 @@ bool PipelineProcessor::step() {
       }
 
       if (ex_stage_.valid && !ex_stage_.bubble) {
-        check_memory_safety(ex_stage_.effective_addr, ex_stage_.control.chk, &next_ma_rw);
+        if (ex_stage_.control.chk.memchk_enable) {
+          check_memory_safety(ex_stage_.effective_addr, ex_stage_.control.chk, &next_ma_rw);
+          next_chk_ma.verified_addr = ex_stage_.effective_addr;
+        } else if (ex_stage_.control.ma.mem_read || ex_stage_.control.ma.mem_write ||
+                   ex_stage_.control.ex.is_call || ex_stage_.control.ex.is_ret) {
+          next_chk_ma.verified_addr = ex_stage_.effective_addr;
+        } else {
+          next_chk_ma.verified_addr = 0;
+        }
         next_chk_ma.pc = ex_stage_.pc;
-        next_chk_ma.verified_addr = ex_stage_.effective_addr;
         next_chk_ma.store_val = ex_stage_.store_val;
         next_chk_ma.alu_result = ex_stage_.alu_result;
         next_chk_ma.rd = ex_stage_.rd;
@@ -334,12 +341,18 @@ bool PipelineProcessor::step() {
         next_ex_stage.alu_result = op_b;
       }
 
-      next_ex_stage.effective_addr = next_ex_stage.alu_result;
       if (of_ex_.control.ex.is_call) {
         next_ex_stage.store_val = of_ex_.pc + 4;
         next_ex_stage.effective_addr = fwd.operand_a; // decremented SP from uop 0
-      } else {
+      } else if (of_ex_.control.ex.is_ret) {
+        next_ex_stage.effective_addr = fwd.operand_a; // SP
+        next_ex_stage.store_val = 0;
+      } else if (of_ex_.control.chk.memchk_enable || of_ex_.control.ma.mem_read || of_ex_.control.ma.mem_write) {
+        next_ex_stage.effective_addr = next_ex_stage.alu_result;
         next_ex_stage.store_val = fwd.operand_b;
+      } else {
+        next_ex_stage.effective_addr = 0;
+        next_ex_stage.store_val = 0;
       }
 
       if (of_ex_.control.ex.is_branch) {
