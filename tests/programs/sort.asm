@@ -62,7 +62,7 @@ inner_end:
 
 checksum:
 # memchk the array range (6-stage CHECK)
-    bndchk r0, 0x300[r0]
+    bndchk r0, 0x300
 # sum = 0
     mov  r6, 0
 # index = 0
