@@ -120,6 +120,20 @@ void PipelineProcessor::check_memory_safety(Word addr, const ChkControl& chk,
     sp_val = pending_rw->wb_data;
   }
 
+  if (chk.chk_mode == ChkMode::BNDCHK_INSTR) {
+    if (sp_val >= safety::MemoryMap::kStackLimit && sp_val <= safety::MemoryMap::kStackTop &&
+        (addr == sp_val - 4 || addr == sp_val + 4)) {
+      const RuntimeException fault = (addr < sp_val) ? stack_guard_.check_push(sp_val, pc_)
+                                                     : stack_guard_.check_pop(sp_val, pc_);
+      if (fault.code != ExceptionCode::NONE) throw fault;
+    } else {
+      const RuntimeException fault = stack_guard_.check_mem(
+          addr, static_cast<Word>(safety::MemoryMap::kWordBytes), false, pc_);
+      if (fault.code != ExceptionCode::NONE) throw fault;
+    }
+    return;
+  }
+
   const RuntimeException fault = stack_guard_.check_access(
       addr, sp_val, static_cast<Word>(safety::MemoryMap::kWordBytes),
       false, pc_);
@@ -152,9 +166,12 @@ bool PipelineProcessor::step() {
         }
         if (!ma_rw_.control.is_multi_uop || ma_rw_.control.is_last_uop) {
           stats_.instructions_retired++;
-          committed_pc_ = ma_rw_.pc + 4;
+          if (ma_rw_.branch_taken) {
+            committed_pc_ = ma_rw_.target_pc;
+          } else {
+            committed_pc_ = ma_rw_.pc + 4;
+          }
           if (ma_rw_.control.ex.is_ret) {
-            if (!shadow_return_stack_.empty()) shadow_return_stack_.pop_back();
             if (!frame_boundaries_.empty()) frame_boundaries_.pop_back();
           }
         }
@@ -179,6 +196,8 @@ bool PipelineProcessor::step() {
                              : chk_ma_.alu_result;
         next_ma_rw.rd = chk_ma_.rd;
         next_ma_rw.is_fpu_reg = chk_ma_.is_fpu_reg;
+        next_ma_rw.branch_taken = chk_ma_.branch_taken;
+        next_ma_rw.target_pc = chk_ma_.target_pc;
         next_ma_rw.control = c;
         next_ma_rw.valid = true;
         next_ma_rw.bubble = false;
@@ -192,6 +211,8 @@ bool PipelineProcessor::step() {
         next_chk_ma.alu_result = ex_stage_.alu_result;
         next_chk_ma.rd = ex_stage_.rd;
         next_chk_ma.is_fpu_reg = ex_stage_.is_fpu_reg;
+        next_chk_ma.branch_taken = ex_stage_.branch_taken;
+        next_chk_ma.target_pc = ex_stage_.target_pc;
         next_chk_ma.control = ex_stage_.control;
         next_chk_ma.valid = true;
         next_chk_ma.bubble = false;
@@ -229,6 +250,8 @@ bool PipelineProcessor::step() {
         ma_rw_.wb_data = wb_val;
         ma_rw_.rd = ex_stage_.rd;
         ma_rw_.is_fpu_reg = ex_stage_.is_fpu_reg;
+        ma_rw_.branch_taken = ex_stage_.branch_taken;
+        ma_rw_.target_pc = ex_stage_.target_pc;
         ma_rw_.control = c;
         ma_rw_.valid = true;
         ma_rw_.bubble = false;
@@ -240,9 +263,12 @@ bool PipelineProcessor::step() {
         }
         if (!c.is_multi_uop || c.is_last_uop) {
           stats_.instructions_retired++;
-          committed_pc_ = ex_stage_.pc + 4;
+          if (ex_stage_.branch_taken) {
+            committed_pc_ = ex_stage_.target_pc;
+          } else {
+            committed_pc_ = ex_stage_.pc + 4;
+          }
           if (c.ex.is_ret) {
-            if (!shadow_return_stack_.empty()) shadow_return_stack_.pop_back();
             if (!frame_boundaries_.empty()) frame_boundaries_.pop_back();
           }
         }
@@ -325,6 +351,9 @@ bool PipelineProcessor::step() {
               throw RuntimeException{ExceptionCode::SHADOW_STACK_MISMATCH, regs_[REG_SP]};
             }
           }
+          if (!shadow_return_stack_.empty()) {
+            shadow_return_stack_.pop_back();
+          }
         } else if (of_ex_.opcode == Opcode::B ||
                    of_ex_.opcode == Opcode::CALL ||
                    eval_cond(of_ex_.control.ex.branch_cond, flags_)) {
@@ -336,6 +365,8 @@ bool PipelineProcessor::step() {
       next_ex_stage.pc = of_ex_.pc;
       next_ex_stage.rd = of_ex_.rd;
       next_ex_stage.is_fpu_reg = of_ex_.dest_is_fpu;
+      next_ex_stage.branch_taken = branch_taken;
+      next_ex_stage.target_pc = branch_target_pc;
       next_ex_stage.control = of_ex_.control;
       next_ex_stage.valid = true;
       next_ex_stage.bubble = false;

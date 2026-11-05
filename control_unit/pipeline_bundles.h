@@ -127,6 +127,8 @@ struct ExStageLatch {
   Word effective_addr = 0;
   std::uint8_t rd = 0;
   bool is_fpu_reg = false;
+  bool branch_taken = false;
+  Word target_pc = 0;
   PipelineControlBundle control{};
   bool valid = false;
   bool bubble = false;
@@ -134,6 +136,8 @@ struct ExStageLatch {
   void flush() {
     valid = false;
     bubble = true;
+    branch_taken = false;
+    target_pc = 0;
     control = PipelineControlBundle{};
   }
 };
@@ -147,6 +151,8 @@ struct ChkMaLatch {
   Word alu_result = 0;
   std::uint8_t rd = 0;
   bool is_fpu_reg = false;
+  bool branch_taken = false;
+  Word target_pc = 0;
   PipelineControlBundle control{};
   bool valid = false;
   bool bubble = false;
@@ -154,6 +160,8 @@ struct ChkMaLatch {
   void flush() {
     valid = false;
     bubble = true;
+    branch_taken = false;
+    target_pc = 0;
     control = PipelineControlBundle{};
   }
 };
@@ -164,6 +172,8 @@ struct MaRwLatch {
   Word wb_data = 0;
   std::uint8_t rd = 0;
   bool is_fpu_reg = false;
+  bool branch_taken = false;
+  Word target_pc = 0;
   PipelineControlBundle control{};
   bool valid = false;
   bool bubble = false;
@@ -171,6 +181,8 @@ struct MaRwLatch {
   void flush() {
     valid = false;
     bubble = true;
+    branch_taken = false;
+    target_pc = 0;
     control = PipelineControlBundle{};
   }
 };

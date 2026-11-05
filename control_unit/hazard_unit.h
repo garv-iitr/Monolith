@@ -113,7 +113,9 @@ class HazardDetectionUnit {
     }
 
     // Extended 6-Stage Load-Use Hazard: Load in EX/CHK stage requires additional bubble
-    // because memory access happens in Stage 5 (MA), two stages away from EX
+    // because memory access happens in Stage 5 (MA), two stages away from EX.
+    // Memory access occurs in Stage 5 (MA), so the loaded value is available in MA/RW
+    // to be forwarded directly to EX via ForwardingUnit (2-cycle load-use latency).
     if (is_six_stage && ex_chk && ex_chk->valid &&
         ex_chk->control.ma.mem_read && (ex_chk->rd != 0 || ex_chk->is_fpu_reg)) {
       if (((decode_rs1 != 0 || rs1_is_fpu) && ex_chk->rd == decode_rs1 && ex_chk->is_fpu_reg == rs1_is_fpu) ||
@@ -125,18 +127,7 @@ class HazardDetectionUnit {
       }
     }
 
-    // 6-Stage Load-Use Hazard: Load in CHK/MA stage requires bubble while memory is being read
-    if (is_six_stage && chk_ma && chk_ma->valid &&
-        chk_ma->control.ma.mem_read && (chk_ma->rd != 0 || chk_ma->is_fpu_reg)) {
-      if (((decode_rs1 != 0 || rs1_is_fpu) && chk_ma->rd == decode_rs1 && chk_ma->is_fpu_reg == rs1_is_fpu) ||
-          ((decode_rs2 != 0 || rs2_is_fpu) && chk_ma->rd == decode_rs2 && chk_ma->is_fpu_reg == rs2_is_fpu)) {
-        d.stall_pc = true;
-        d.stall_if_of = true;
-        d.insert_bubble_ex = true;
-        return d;
-      }
-    }
-
+    (void)chk_ma;
     return d;
   }
 };
