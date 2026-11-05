@@ -123,7 +123,7 @@ int main(int argc, char* argv[]) {
 
     // Single-pass: read line, decode word, output assembly
     while (getline(infile, line)) {
-        line_number++;
+        (void)line_number;
         uint32_t word = 0;
         if (!parse_line_word(line, word)) continue;
 

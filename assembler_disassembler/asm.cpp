@@ -702,6 +702,6 @@ int main(int argc, char* argv[]) {
         cout << setfill(' ') << "\n";
     }
 
-    cout << "Output written to " << output_file << "/n";
+    cout << "Output written to " << output_file << "\n";
     return 0;
 }
