@@ -18,20 +18,17 @@ add_library(risc201_config INTERFACE)
 target_include_directories(risc201_config INTERFACE
   ${CMAKE_CURRENT_SOURCE_DIR}
   "${CMAKE_CURRENT_SOURCE_DIR}/control_unit"
-  "${CMAKE_CURRENT_SOURCE_DIR}/legacy")
+  "${CMAKE_CURRENT_SOURCE_DIR}/memory"
+  "${CMAKE_CURRENT_SOURCE_DIR}/assembler_disassembler")
 target_compile_definitions(risc201_config INTERFACE
   RISC201_WORD_BITS=${RISC201_WORD_BITS})
 
 add_library(risc201_cu STATIC
   "control_unit/control_unit.cpp"
   "control_unit/pipeline_processor.cpp"
-  "legacy/common/internal_registers.cpp"
-  "legacy/datapath/datapath.cpp"
-  "legacy/datapath/memory_unit.cpp"
-  "legacy/microcode/microcode_program.cpp"
-  "legacy/microcode/h_assembler.cpp"
-  "legacy/microcode/v_assembler.cpp"
-  "legacy/vertical/v_decoder.cpp")
+  "control_unit/internal_registers.cpp"
+  "control_unit/microcode_program.cpp"
+  "memory/memory_unit.cpp")
 target_link_libraries(risc201_cu PUBLIC risc201_config risc201_safety risc201_alu)
 target_compile_options(risc201_cu PRIVATE -Wall -Wextra)
 
@@ -55,22 +52,9 @@ add_executable(risc201dis assembler_disassembler/disasm.cpp)
 target_link_libraries(risc201dis PRIVATE risc201_config)
 target_compile_options(risc201dis PRIVATE -Wall -Wextra)
 
-add_library(risc201_asm STATIC
-  legacy/assembler/isa.cpp
-  legacy/assembler/formats.cpp
-  legacy/assembler/macros.cpp
-  legacy/assembler/assembler.cpp
-  legacy/assembler/disassembler.cpp)
-target_link_libraries(risc201_asm PUBLIC risc201_config)
-target_include_directories(risc201_asm PUBLIC legacy/assembler)
-target_compile_options(risc201_asm PRIVATE -Wall -Wextra)
-
-add_executable(risc201-cu-demo "legacy/main.cpp")
-target_link_libraries(risc201-cu-demo PRIVATE risc201_cu)
-target_compile_options(risc201-cu-demo PRIVATE -Wall -Wextra)
-
 add_executable(risc201-sim simulator_core/main.cpp)
-target_link_libraries(risc201-sim PRIVATE risc201_cu risc201_alu risc201_asm)
+add_dependencies(risc201-sim risc201asm)
+target_link_libraries(risc201-sim PRIVATE risc201_cu risc201_alu)
 target_compile_options(risc201-sim PRIVATE -Wall -Wextra)
 
 if(RISC201_TUI)
@@ -95,7 +79,8 @@ add_executable(risc201-tests
   tests/test_programs.cpp
   tests/test_assembler.cpp
   tests/test_pipeline.cpp)
-target_link_libraries(risc201-tests PRIVATE risc201_cu risc201_alu risc201_asm)
+add_dependencies(risc201-tests risc201asm)
+target_link_libraries(risc201-tests PRIVATE risc201_cu risc201_alu risc201_safety)
 target_compile_options(risc201-tests PRIVATE -Wall -Wextra)
 
 add_executable(stack-guard-test tests/test_stack_guard.cpp)
@@ -121,3 +106,8 @@ add_executable(stack-visualizer-test
 target_link_libraries(stack-visualizer-test PRIVATE risc201_safety)
 target_compile_options(stack-visualizer-test PRIVATE -Wall -Wextra)
 add_test(NAME stack-visualizer-test COMMAND stack-visualizer-test)
+
+# Assembler & Disassembler Toolchain Integration Test
+add_test(NAME toolchain-asm-fib COMMAND risc201asm "${CMAKE_CURRENT_SOURCE_DIR}/tests/programs/fib.asm" "${CMAKE_CURRENT_BINARY_DIR}/fib.hex" --hex)
+add_test(NAME toolchain-dis-fib COMMAND risc201dis "${CMAKE_CURRENT_BINARY_DIR}/fib.hex")
+set_tests_properties(toolchain-dis-fib PROPERTIES DEPENDS toolchain-asm-fib)

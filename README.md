@@ -71,8 +71,8 @@ flowchart LR
 
 1. **Assembler (`risc201asm`):** Two-pass assembler with symbol resolution, section handling (`.text`, `.data`), and full-descending stack macro expansion (`PUSH`, `POP`, `SPUSH`, `SPOP`).
 2. **Disassembler (`risc201dis`):** Single-pass binary/hex disassembler that reconstructs assembly mnemonics, operands, and memory offsets.
-3. **Execution Simulator (`risc201-sim`):** Interactive debugger supporting single-step (`s`), micro-step (`mi`), breakpoints (`b`), reverse step-back history, and full-screen terminal UI (`--tui`).
-4. **Test Suite (`risc201-tests`):** Automated regression suite with 43 tests covering pipeline hazards, microcode, memory safety, and arithmetic.
+3. **Execution Simulator (`risc201-sim`):** Unified pipelined debugger supporting live stage latch inspection (`pipe`), IEEE-754 FPU registers (`fregs`), single-step (`s`), micro-cycle step (`mi`), reverse execution (`u`), breakpoints (`b`), and full-screen terminal UI (`--tui`).
+4. **Test Suite (`risc201-tests`):** Automated regression suite with 48 test targets and an 80-case runtime safety matrix covering pipeline hazards, control ROM, gate-level arithmetic, memory safety, and toolchain continuity.
 
 ---
 
@@ -82,26 +82,30 @@ Cycle counts, instruction retirement, and CPI measured across our cycle-accurate
 
 | Benchmark | Pipeline | Control ROM Encoding | Cycles | Instructions | CPI | Speedup vs Baseline | Stalls / Flushes |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Recursive Fibonacci ($N=10$)** | 4-Stage | Horizontal (48-bit) | 3,597 | 1,825 | 1.97 | 5.26x | 1,415 |
-| | 4-Stage | Vertical (24-bit) | 3,597 | 1,825 | 1.97 | 5.26x | 1,415 |
-| | 6-Stage | Horizontal (48-bit) | 3,952 | 1,825 | 2.17 | 4.79x | 1,768 |
-| | 6-Stage | Vertical (24-bit) | 3,952 | 1,825 | 2.17 | 4.79x | 1,768 |
-| | *Single-Bus Baseline* | *Microprogrammed* | *18,937* | *1,825* | *10.38* | *1.00x* | *N/A* |
-| **Matrix Multiply + FPU ($2\times2$)** | 4-Stage | Horizontal (48-bit) | 315 | 229 | 1.38 | 7.40x | 83 |
-| | 4-Stage | Vertical (24-bit) | 315 | 229 | 1.38 | 7.40x | 83 |
-| | 6-Stage | Horizontal (48-bit) | 326 | 229 | 1.42 | 7.15x | 92 |
-| | 6-Stage | Vertical (24-bit) | 326 | 229 | 1.42 | 7.15x | 92 |
-| | *Single-Bus Baseline* | *Microprogrammed* | *2,331* | *229* | *10.18* | *1.00x* | *N/A* |
-| **Bubble Sort + Checksum** | 4-Stage | Horizontal (48-bit) | 818 | 606 | 1.35 | 7.23x | 209 |
-| | 4-Stage | Vertical (24-bit) | 818 | 606 | 1.35 | 7.23x | 209 |
-| | 6-Stage | Horizontal (48-bit) | 869 | 606 | 1.43 | 6.81x | 258 |
-| | 6-Stage | Vertical (24-bit) | 869 | 606 | 1.43 | 6.81x | 258 |
-| | *Single-Bus Baseline* | *Microprogrammed* | *5,918* | *606* | *9.77* | *1.00x* | *N/A* |
+| **Recursive Fibonacci ($N=10$)** | 4-Stage | Horizontal (48-bit) | 3,597 | 1,825 | 1.97 | 5.07x | 1,415 |
+| | 4-Stage | Vertical (24-bit) | 3,597 | 1,825 | 1.97 | 5.07x | 1,415 |
+| | 6-Stage | Horizontal (48-bit) | 4,305 | 1,825 | 2.36 | 4.40x | 2,121 |
+| | 6-Stage | Vertical (24-bit) | 4,305 | 1,825 | 2.36 | 4.40x | 2,121 |
+| | *Single-Bus Baseline (4-Stage)* | *Microprogrammed* | *18,230* | *1,825* | *9.99* | *1.00x* | *N/A* |
+| | *Single-Bus Baseline (6-Stage)* | *Microprogrammed* | *18,937* | *1,825* | *10.38* | *1.00x* | *N/A* |
+| **Matrix Multiply + FPU ($2\times2$)** | 4-Stage | Horizontal (48-bit) | 315 | 229 | 1.38 | 7.31x | 83 |
+| | 4-Stage | Vertical (24-bit) | 315 | 229 | 1.38 | 7.31x | 83 |
+| | 6-Stage | Horizontal (48-bit) | 335 | 229 | 1.46 | 6.96x | 101 |
+| | 6-Stage | Vertical (24-bit) | 335 | 229 | 1.46 | 6.96x | 101 |
+| | *Single-Bus Baseline (4-Stage)* | *Microprogrammed* | *2,303* | *229* | *10.06* | *1.00x* | *N/A* |
+| | *Single-Bus Baseline (6-Stage)* | *Microprogrammed* | *2,331* | *229* | *10.18* | *1.00x* | *N/A* |
+| **Bubble Sort + Checksum** | 4-Stage | Horizontal (48-bit) | 818 | 606 | 1.35 | 7.09x | 209 |
+| | 4-Stage | Vertical (24-bit) | 818 | 606 | 1.35 | 7.09x | 209 |
+| | 6-Stage | Horizontal (48-bit) | 918 | 606 | 1.51 | 6.45x | 307 |
+| | 6-Stage | Vertical (24-bit) | 918 | 606 | 1.51 | 6.45x | 307 |
+| | *Single-Bus Baseline (4-Stage)* | *Microprogrammed* | *5,800* | *606* | *9.57* | *1.00x* | *N/A* |
+| | *Single-Bus Baseline (6-Stage)* | *Microprogrammed* | *5,918* | *606* | *9.77* | *1.00x* | *N/A* |
 
 **Observations:**
 - The 4-stage pipeline achieves lower CPI (1.35–1.97) due to its 1-cycle load-use penalty.
 - The 6-stage pipeline trades a small CPI increase for higher clock frequency potential and isolated hardware memory checking.
-- The 24-bit Vertical ROM achieves **100% cycle-for-cycle parity** with the 48-bit Horizontal ROM across all benchmarks, proving that field compaction has zero penalty on execution throughput.
+- The 24-bit Vertical ROM achieves **100% cycle-for-cycle parity** with the 48-bit Horizontal ROM across all benchmarks, proving that field compaction with combinational micro-decoding has zero penalty on execution throughput.
+- Baseline 4-stage and 6-stage single-bus cycle counts are cleanly differentiated via accurate stage-layout parameter forwarding.
 
 ---
 
@@ -116,10 +120,10 @@ cmake -B build -G "MinGW Makefiles"
 # 2. Compile all binaries
 cmake --build build
 
-# 3. Run all unit and regression tests (43/43 tests)
+# 3. Run all unit and regression tests (48/48 unit tests + 80/80 safety matrix cases)
 .\build\risc201-tests.exe
 
-# 4. Run CTest verification
+# 4. Run CTest verification (6/6 suites including toolchain integration)
 ctest --test-dir build --output-on-failure
 
 # 5. Assemble an example program
@@ -128,7 +132,7 @@ ctest --test-dir build --output-on-failure
 # 6. Disassemble hex back to assembly
 .\build\risc201dis.exe fib.hex
 
-# 7. Run interactive FTXUI terminal debugger
+# 7. Run interactive FTXUI terminal debugger (with live pipeline latches and FPU registers)
 .\build\risc201-sim.exe --tui
 ```
 
@@ -140,9 +144,10 @@ ctest --test-dir build --output-on-failure
 Monolith/
 ├── control_unit/           # Garv      - Microcode ROMs, Sequencer, Pipeline Datapath & Bundles
 ├── simulator_core/         # Aditya    - Core CPU stepping, Memory/Registers, FTXUI Terminal UI
+├── memory/                 # Aditya    - Physical MemoryUnit, word read/write, write-journaling
 ├── alu/ & fpu/             # Atharva   - Kogge-Stone Adder, Booth Multiplier, Divider, IEEE-754 FPU
 ├── memory_safety/          # Paras     - StackGuard firewall, Memory Exception Framework, ASCII Visualizer
-├── assembler_disassembler/ # Saatvik   - Standalone 2-pass Assembler (risc201asm) & Disassembler (risc201dis)
+├── assembler_disassembler/ # Saatvik   - Standalone CLI (risc201asm/dis) & Modular Assembler Library
 ├── isa_spec/               # Shared    - Canonical ISA definitions & opcode mappings
 ├── tests/                  # Shared    - Benchmark suite and safety regression matrix
 └── docs/                   # Shared    - Architecture specifications & editable Draw.io schematics
