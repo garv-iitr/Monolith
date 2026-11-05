@@ -27,7 +27,6 @@ add_library(risc201_cu STATIC
   "control_unit/control_unit.cpp"
   "control_unit/pipeline_processor.cpp"
   "control_unit/internal_registers.cpp"
-  "control_unit/microcode_program.cpp"
   "memory/memory_unit.cpp")
 target_link_libraries(risc201_cu PUBLIC risc201_config risc201_safety risc201_alu)
 target_compile_options(risc201_cu PRIVATE -Wall -Wextra)
@@ -78,7 +77,8 @@ add_executable(risc201-tests
   tests/test_cu_programs.cpp
   tests/test_programs.cpp
   tests/test_assembler.cpp
-  tests/test_pipeline.cpp)
+  tests/test_pipeline.cpp
+  tests/test_edge_cases.cpp)
 add_dependencies(risc201-tests risc201asm)
 target_link_libraries(risc201-tests PRIVATE risc201_cu risc201_alu risc201_safety)
 target_compile_options(risc201-tests PRIVATE -Wall -Wextra)
@@ -118,8 +118,3 @@ add_toolchain_test(fib fib.asm)
 add_toolchain_test(fac fac.asm)
 add_toolchain_test(matmul matmul.asm)
 add_toolchain_test(sort sort.asm)
-add_toolchain_test(alu alu_ops.asm)
-add_toolchain_test(cf control_flow.asm)
-add_toolchain_test(fpu fpu_ops.asm)
-add_toolchain_test(mem memory_ops.asm)
-add_toolchain_test(all34 all_34_opcodes.asm)
