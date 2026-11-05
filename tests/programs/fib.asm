@@ -5,7 +5,7 @@
 #   fib(0) = 0, fib(1) = 1, fib(n) = fib(n-1) + fib(n-2)
 #
 # Registers: r1 = n (argument), r2 = result, r3 = scratch.
-# Expected:   mem[0x100] = 55  (= fib(10)),  sp restored to 0x300.
+# Expected:   mem[0x10000] = 55  (= fib(10)),  sp restored to 0x20000.
 #
 # Opcodes used: mov, call, nop, st, halt, cmp, bgt, bne, b, ret, sub, ld, add
 #
@@ -14,15 +14,14 @@
 # The assembler resolves labels with this convention.
 # =============================================================================
 
-# set up the stack
-    mov  sp, 0x300
-# n = 30
-    mov  r1, 30
-# r2 = fib(30)
+# n = 10
+    mov  r1, 10
+# r2 = fib(10)
     call fib
     nop
-# store the result
-    st   r2, 0x100[r0]
+# store the result at data base
+    li   r4, 0x10000
+    st   r2, 0[r4]
     halt
 
 fib:
