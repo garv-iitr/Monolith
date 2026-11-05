@@ -58,6 +58,8 @@ class MemoryUnit {
 
  private:
   std::vector<Word> data_; // Underlying word-indexed storage array
+  std::vector<WriteDelta> journal_;
+  bool journal_active_ = false;
 };
 
 }
