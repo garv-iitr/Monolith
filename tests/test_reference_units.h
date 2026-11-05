@@ -1,18 +1,6 @@
 #ifndef RISC201_TEST_REFERENCE_UNITS_H
 #define RISC201_TEST_REFERENCE_UNITS_H
 
-// ============================================================================
-// Testbench-only reference models of the ALU, FPU and memory-check units.
-//
-// These let the control-unit test programs execute end to end before Atharva's
-// (alu/) and Paraas's (memory_safety/) modules are integrated.  They implement
-// exactly the args contract in `control unit/common/control_signals.h`, so
-// swapping them for the real units is a drop-in change.
-//
-// This is the *oracle*, not the deliverable: any mismatch between these models
-// and the real units is caught the moment the real units are wired in, because
-// the programs below check exact architectural results.
-// ============================================================================
 
 #include <array>
 #include <cstddef>
@@ -31,9 +19,6 @@ using risc201::cu::FpuOp;
 using risc201::cu::InternalRegisters;
 using risc201::cu::MemChkOp;
 
-// ----------------------------------------------------------------------------
-// ALU reference (Atharva's contract: A, B -> aluResult + Z/N/C/V)
-// ----------------------------------------------------------------------------
 struct RefAluResult {
   Word value = 0;
   bool zero = false;
@@ -124,9 +109,6 @@ struct RefAlu {
   }
 };
 
-// ----------------------------------------------------------------------------
-// FPU reference (Atharva's contract: fpSrc/fpData/fpVal + fpA/fpB -> fpuResult)
-// ----------------------------------------------------------------------------
 struct RefFpu {
   std::array<Word, NUM_FLOAT_REGISTERS> fprs{};
 
@@ -170,8 +152,7 @@ struct RefFpu {
       case FpuOp::FCMP:
         next.fcc = (a < b);
         if (sig.fpu_set_fcc) {
-          // Mirror the float compare into the architectural flags so the
-          // branch microcode can reuse flags.E / flags.GT / flags.N.
+          // copy fcmp into the regular flags so the branch microcode can reuse them
           next.flags.Z = (a == b);
           next.flags.N = (a < b);
           next.flags.C = false;
@@ -188,9 +169,6 @@ struct RefFpu {
   }
 };
 
-// ----------------------------------------------------------------------------
-// Memory-check reference (Paraas's contract: memChkAddr -> memChkStatus)
-// ----------------------------------------------------------------------------
 struct RefMemChk {
   bool trap_on_fail = true;
 
@@ -211,6 +189,6 @@ struct RefMemChk {
   }
 };
 
-}  // namespace risc201::testbench
+}
 
-#endif  // RISC201_TEST_REFERENCE_UNITS_H
+#endif

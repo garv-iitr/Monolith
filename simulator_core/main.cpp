@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -8,32 +9,16 @@
 
 #include "isa_spec/isa.h"
 #include "simulator_core/core/debugger.h"
+#ifdef RISC201_HAS_TUI
+#include "simulator_core/ui/tui.h"
+#endif
 
 namespace {
 
-Word enc_imm(Opcode op, int rd, int rs1, int imm) {
-  return (static_cast<Word>(op) << 26) | (1u << 24) |
-         (static_cast<Word>(rd & 0xF) << 20) | (static_cast<Word>(rs1 & 0xF) << 16) |
-         static_cast<Word>(imm & 0xFFFF);
-}
-
-Word enc_reg(Opcode op, int rd, int rs1, int rs2) {
-  return (static_cast<Word>(op) << 26) | (static_cast<Word>(rd & 0xF) << 20) |
-         (static_cast<Word>(rs1 & 0xF) << 16) | (static_cast<Word>(rs2 & 0xF) << 12);
-}
-
-Word enc_halt() { return static_cast<Word>(Opcode::HALT) << 26; }
-
-std::vector<Word> demo_program() {
-  return {
-      enc_imm(Opcode::MOV, 1, 0, 6),
-      enc_imm(Opcode::MOV, 2, 0, 7),
-      enc_reg(Opcode::MUL, 3, 1, 2),
-      enc_reg(Opcode::ADD, 4, 1, 2),
-      enc_reg(Opcode::SUB, 5, 2, 1),
-      enc_halt(),
-  };
-}
+// text at 0, .data at 0x10000 (matches the assembler defaults)
+constexpr Word kTextBase = 0x00000000;
+constexpr Word kDataBase = 0x00010000;
+constexpr std::size_t kMemWords = 0x20000 / 4;
 
 bool parse_word(const std::string& s, Word& out) {
   try {
@@ -45,6 +30,21 @@ bool parse_word(const std::string& s, Word& out) {
   }
 }
 
+bool parse_bounded_integer(const std::string& text, int min_value,
+                           int max_value, int& out) {
+  try {
+    std::size_t parsed = 0;
+    const int value = std::stoi(text, &parsed, 10);
+    if (parsed != text.size() || value < min_value || value > max_value) {
+      return false;
+    }
+    out = value;
+    return true;
+  } catch (const std::exception&) {
+    return false;
+  }
+}
+
 bool load_hex_file(const std::string& path, std::vector<Word>& out) {
   std::ifstream in(path);
   if (!in) return false;
@@ -52,8 +52,14 @@ bool load_hex_file(const std::string& path, std::vector<Word>& out) {
   std::string line;
   while (std::getline(in, line)) {
     if (line.empty() || line[0] == '#') continue;
+    std::size_t n = 0;
     Word w = 0;
-    if (!parse_word(line, w)) {
+    try {
+      w = static_cast<Word>(std::stoull(line, &n, 16));
+    } catch (...) {
+      n = 0;
+    }
+    if (n != line.size()) {
       std::printf("  bad line: %s\n", line.c_str());
       return false;
     }
@@ -64,20 +70,73 @@ bool load_hex_file(const std::string& path, std::vector<Word>& out) {
 
 void print_registers(const risc201::Debugger& dbg) {
   const risc201::StateView& v = dbg.view();
-  std::printf("  pc=0x%X  ir=0x%08X  microPC=%u  stage=%s\n",
-              static_cast<unsigned>(v.pc), static_cast<unsigned>(v.ir),
-              static_cast<unsigned>(v.micro_pc), v.stage);
-  std::printf("  flags: Z=%d N=%d C=%d V=%d\n", v.flags.Z, v.flags.N, v.flags.C,
-              v.flags.V);
-  for (int i = 0; i < NUM_REGISTERS; ++i) {
-    std::printf("  r%-2d=0x%-8X%s", i, static_cast<unsigned>(v.gprs[i]),
-                (i % 4 == 3) ? "\n" : "");
+  std::vector<std::string> registers;
+  char line[160];
+  std::snprintf(line, sizeof(line), "  pc=0x%X  ir=0x%08X  microPC=%u  stage=%s",
+                static_cast<unsigned>(v.pc), static_cast<unsigned>(v.ir),
+                static_cast<unsigned>(v.micro_pc), v.stage);
+  registers.emplace_back(line);
+  std::snprintf(line, sizeof(line), "  flags: Z=%d N=%d C=%d V=%d", v.flags.Z,
+                v.flags.N, v.flags.C, v.flags.V);
+  registers.emplace_back(line);
+  for (int row = 0; row < NUM_REGISTERS / 4; ++row) {
+    std::snprintf(line, sizeof(line), "  r%-2d=0x%-8X  r%-2d=0x%-8X  r%-2d=0x%-8X  r%-2d=0x%-8X",
+                  row * 4, static_cast<unsigned>(v.gprs[row * 4]),
+                  row * 4 + 1, static_cast<unsigned>(v.gprs[row * 4 + 1]),
+                  row * 4 + 2, static_cast<unsigned>(v.gprs[row * 4 + 2]),
+                  row * 4 + 3, static_cast<unsigned>(v.gprs[row * 4 + 3]));
+    registers.emplace_back(line);
   }
-  if (v.fault_code != ExceptionCode::NONE)
-    std::printf("  FAULT: %s @ 0x%llX\n", to_string(v.fault_code),
-                static_cast<unsigned long long>(v.fault_address));
-  else if (v.halted)
-    std::printf("  halted: %s\n", (v.halt_reason[0] != '\0') ? v.halt_reason : "halt");
+  if (v.fault_code != ExceptionCode::NONE) {
+    std::snprintf(line, sizeof(line), "  FAULT: %s @ 0x%llX",
+                  to_string(v.fault_code),
+                  static_cast<unsigned long long>(v.fault_address));
+    registers.emplace_back(line);
+  } else if (v.halted) {
+    std::snprintf(line, sizeof(line), "  halted: %s",
+                  (v.halt_reason[0] != '\0') ? v.halt_reason : "halt");
+    registers.emplace_back(line);
+  }
+
+  std::istringstream stack(dbg.render_stack(16));
+  std::string stack_line;
+  std::vector<std::string> stack_lines;
+  while (std::getline(stack, stack_line)) stack_lines.push_back(stack_line);
+
+  const std::size_t rows = std::max(registers.size(), stack_lines.size());
+  for (std::size_t i = 0; i < rows; ++i) {
+    const char* register_line = i < registers.size() ? registers[i].c_str() : "";
+    const char* stack_text = i < stack_lines.size() ? stack_lines[i].c_str() : "";
+    std::printf("%-66s%s\n", register_line, stack_text);
+  }
+}
+
+void print_micro_state(const risc201::Debugger& dbg) {
+  const risc201::StateView& v = dbg.view();
+  const risc201::cu::InternalRegisters& m = v.micro;
+  std::printf("  [micro] A=0x%X B=0x%X alu=0x%X  mar=0x%X mdr=0x%X lmd=0x%X\n",
+              static_cast<unsigned>(m.A), static_cast<unsigned>(m.B),
+              static_cast<unsigned>(m.alu_result), static_cast<unsigned>(m.mar),
+              static_cast<unsigned>(m.mdr), static_cast<unsigned>(m.ld_result));
+  std::printf("          regsrc=0x%X regval=0x%X regdata=0x%X  btgt=0x%X immx=0x%X\n",
+              static_cast<unsigned>(m.reg_src), static_cast<unsigned>(m.reg_val),
+              static_cast<unsigned>(m.reg_data),
+              static_cast<unsigned>(m.branch_target), static_cast<unsigned>(m.immx));
+  std::printf("          I=%d rd=%u rs1=%u rs2=%u  E=%d GT=%d\n", m.I ? 1 : 0,
+              static_cast<unsigned>(m.rd), static_cast<unsigned>(m.rs1),
+              static_cast<unsigned>(m.rs2), m.flags_E ? 1 : 0, m.flags_GT ? 1 : 0);
+
+  const std::uint8_t op = static_cast<std::uint8_t>(get_opcode(v.ir));
+  const std::uint16_t start = dbg.cpu().micro_routine_start(op);
+  const std::uint16_t end = dbg.cpu().micro_routine_end(op);
+  std::printf("  routine [%u..%u) = %u micro-ops",
+              static_cast<unsigned>(start), static_cast<unsigned>(end),
+              static_cast<unsigned>(end - start));
+  if (dbg.at_instruction_boundary())
+    std::printf("  -- end of instruction (%zu micro-ops)\n",
+                dbg.micro_ops_last_instruction());
+  else
+    std::printf("  (at micro-op %zu)\n", dbg.micro_steps());
 }
 
 void print_watch_changes(risc201::Debugger& dbg) {
@@ -90,7 +149,7 @@ void print_watch_changes(risc201::Debugger& dbg) {
 void print_help() {
   std::printf(
       "  step | s              step one instruction\n"
-      "  micro | mi            step one micro-cycle\n"
+      "  micro | mi            step one micro-cycle (shows micro-registers)\n"
       "  run | r               run to completion\n"
       "  continue | c          run to next breakpoint or completion\n"
       "  break <addr> | b      set breakpoint\n"
@@ -100,8 +159,9 @@ void print_help() {
       "  unwatch <reg>         stop watching a register\n"
       "  regs                  dump registers and flags\n"
       "  mem [addr] [count]    dump memory words\n"
-      "  load <file>           load hex program (one word per line)\n"
-      "  demo                  reload the built-in demo program\n"
+      "  stack [window]        show stack words, SP and call-frame boundaries\n"
+      "  stack trace [steps] [window]  render stack after each instruction with diffs\n"
+      "  load <text> [data]    load hex program (text at 0x0, data at 0x10000)\n"
       "  reset                 reset the machine\n"
       "  help | h              this help\n"
       "  quit | q              exit\n");
@@ -109,11 +169,69 @@ void print_help() {
 
 }  // namespace
 
-int main() {
-  risc201::Debugger dbg;
-  dbg.load(demo_program());
+int main(int argc, char* argv[]) {
+  risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE;
+  risc201::ControlEncoding encoding = risc201::ControlEncoding::HORIZONTAL;
+  bool use_tui = false;
 
-  std::printf("RISC201 debugger. Type 'help' for commands.\n");
+  for (int i = 1; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "--help" || arg == "-h") {
+      std::printf("Usage: risc201-sim [--tui|--headless] [--stages 4|6] [--encoding horizontal|vertical] [--help|-h]\n"
+                  "  --tui       Launch the full-screen debugger (requires RISC201_TUI=ON)\n"
+                  "  --headless  Launch the line-based debugger\n"
+                  "  --stages    Select the 4-stage or 6-stage microprogram (default: 6)\n"
+                  "  --encoding  Select horizontal or vertical control encoding (default: horizontal)\n\n"
+                  "Commands:\n");
+      print_help();
+      return 0;
+    }
+    if (arg == "--tui") {
+      use_tui = true;
+    } else if (arg == "--headless") {
+      use_tui = false;
+    } else if (arg == "--stages" && i + 1 < argc) {
+      const std::string value = argv[++i];
+      if (value == "4") {
+        layout = risc201::cu::StageLayout::FOUR_STAGE;
+      } else if (value == "6") {
+        layout = risc201::cu::StageLayout::SIX_STAGE;
+      } else {
+        std::printf("Invalid stage count '%s' (expected 4 or 6)\n", value.c_str());
+        return 1;
+      }
+    } else if (arg == "--encoding" && i + 1 < argc) {
+      const std::string value = argv[++i];
+      if (value == "horizontal") {
+        encoding = risc201::ControlEncoding::HORIZONTAL;
+      } else if (value == "vertical") {
+        encoding = risc201::ControlEncoding::VERTICAL;
+      } else {
+        std::printf("Invalid encoding '%s' (expected horizontal or vertical)\n", value.c_str());
+        return 1;
+      }
+    } else {
+      std::printf("Unknown or incomplete option: %s\nUse --help for usage.\n", arg.c_str());
+      return 1;
+    }
+  }
+
+  risc201::Debugger dbg(kMemWords, layout, encoding);
+
+  if (use_tui) {
+#ifdef RISC201_HAS_TUI
+    return risc201::run_tui(
+        dbg, encoding == risc201::ControlEncoding::VERTICAL,
+        static_cast<unsigned>(layout));
+#else
+    std::printf("This build has no TUI. Reconfigure with -DRISC201_TUI=ON.\n");
+    return 1;
+#endif
+  }
+
+  std::printf("RISC201 debugger (%s, %u-stage). Type 'help' for commands.\n",
+              encoding == risc201::ControlEncoding::HORIZONTAL ? "horizontal" : "vertical",
+              static_cast<unsigned>(layout));
   print_registers(dbg);
 
   std::string line;
@@ -133,6 +251,7 @@ int main() {
     } else if (cmd == "micro" || cmd == "mi") {
       dbg.step_micro();
       print_registers(dbg);
+      print_micro_state(dbg);
       print_watch_changes(dbg);
     } else if (cmd == "run" || cmd == "r") {
       dbg.run();
@@ -203,21 +322,87 @@ int main() {
           break;
         }
       }
-    } else if (cmd == "load") {
-      std::string path;
-      if (iss >> path) {
-        std::vector<Word> code;
-        if (load_hex_file(path, code)) {
-          dbg.load(code);
-          std::printf("  loaded %zu words\n", code.size());
-          print_registers(dbg);
+    } else if (cmd == "stack" || cmd == "stackviz") {
+      std::string mode;
+      iss >> mode;
+      if (mode == "trace") {
+        int max_steps = 64;
+        int window = 8;
+        std::string steps_arg, window_arg, extra;
+        bool valid_args = true;
+        if (iss >> steps_arg) {
+          valid_args =
+              parse_bounded_integer(steps_arg, 1, 1000, max_steps);
+        }
+        if (valid_args && (iss >> window_arg)) {
+          valid_args = parse_bounded_integer(window_arg, 1, 64, window);
+        }
+        if (iss >> extra) valid_args = false;
+        if (!valid_args) {
+          std::printf("  usage: stack trace [steps 1..1000] [window 1..64]\n");
         } else {
-          std::printf("  failed to load '%s'\n", path.c_str());
+          int traced = 0;
+          while (!dbg.cpu().halted() && traced < max_steps) {
+            const Word before_pc = dbg.cpu().pc();
+            const Word before_sp = dbg.cpu().stack_pointer_word();
+            const std::vector<Word> before_stack =
+                dbg.cpu().stack_memory_snapshot();
+            dbg.step_instruction();
+            std::printf("[STACK TRACE] instruction at 0x%X -> PC 0x%X\n",
+                        static_cast<unsigned>(before_pc),
+                        static_cast<unsigned>(dbg.cpu().pc()));
+            std::printf("%s",
+                        dbg.cpu()
+                            .render_stack_diff(before_stack, before_sp)
+                            .c_str());
+            std::printf("%s", dbg.render_stack(window).c_str());
+            ++traced;
+          }
+          if (traced == max_steps && !dbg.cpu().halted()) {
+            std::printf("  trace stopped at %d instruction(s); CPU remains "
+                        "runnable\n",
+                        traced);
+          }
+          print_registers(dbg);
+        }
+      } else {
+        int window = 8;
+        std::string extra;
+        const bool valid_window =
+            mode.empty() || parse_bounded_integer(mode, 1, 64, window);
+        if (!valid_window || (iss >> extra)) {
+          std::printf("  usage: stack [window 1..64] | stack trace [steps] "
+                      "[window]\n");
+        } else {
+          std::printf("%s", dbg.render_stack(window).c_str());
         }
       }
-    } else if (cmd == "demo") {
-      dbg.load(demo_program());
-      print_registers(dbg);
+    } else if (cmd == "load") {
+      std::string path, dataPath;
+      if (iss >> path) {
+        iss >> dataPath;
+        std::vector<Word> code;
+        if (!load_hex_file(path, code)) {
+          std::printf("  failed to load '%s'\n", path.c_str());
+        } else {
+          dbg.load(kTextBase, code);
+          std::printf("  loaded %zu text word(s) at 0x%X\n", code.size(),
+                      static_cast<unsigned>(kTextBase));
+          if (!dataPath.empty()) {
+            std::vector<Word> data;
+            if (!load_hex_file(dataPath, data)) {
+              std::printf("  failed to load data '%s'\n", dataPath.c_str());
+            } else {
+              dbg.load(kDataBase, data);
+              std::printf("  loaded %zu data word(s) at 0x%X\n", data.size(),
+                          static_cast<unsigned>(kDataBase));
+            }
+          }
+          print_registers(dbg);
+        }
+      } else {
+        std::printf("  usage: load <text.hex> [data.hex]\n");
+      }
     } else if (cmd == "reset") {
       dbg.reset();
       print_registers(dbg);

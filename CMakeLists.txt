@@ -17,19 +17,22 @@ option(RISC201_TUI "Build the FTXUI terminal-UI debugger (fetches FTXUI)" ON)
 add_library(risc201_config INTERFACE)
 target_include_directories(risc201_config INTERFACE
   ${CMAKE_CURRENT_SOURCE_DIR}
-  "${CMAKE_CURRENT_SOURCE_DIR}/control_unit")
+  "${CMAKE_CURRENT_SOURCE_DIR}/control_unit"
+  "${CMAKE_CURRENT_SOURCE_DIR}/legacy")
 target_compile_definitions(risc201_config INTERFACE
   RISC201_WORD_BITS=${RISC201_WORD_BITS})
 
 add_library(risc201_cu STATIC
-  "control_unit/common/internal_registers.cpp"
-  "control_unit/datapath/datapath.cpp"
-  "control_unit/datapath/memory_unit.cpp"
-  "control_unit/microcode/microcode_program.cpp"
-  "control_unit/microcode/h_assembler.cpp"
-  "control_unit/microcode/v_assembler.cpp"
-  "control_unit/vertical/v_decoder.cpp")
-target_link_libraries(risc201_cu PUBLIC risc201_config)
+  "control_unit/control_unit.cpp"
+  "control_unit/pipeline_processor.cpp"
+  "legacy/common/internal_registers.cpp"
+  "legacy/datapath/datapath.cpp"
+  "legacy/datapath/memory_unit.cpp"
+  "legacy/microcode/microcode_program.cpp"
+  "legacy/microcode/h_assembler.cpp"
+  "legacy/microcode/v_assembler.cpp"
+  "legacy/vertical/v_decoder.cpp")
+target_link_libraries(risc201_cu PUBLIC risc201_config risc201_safety)
 target_compile_options(risc201_cu PRIVATE -Wall -Wextra)
 
 add_library(risc201_alu STATIC
@@ -43,15 +46,32 @@ add_library(risc201_safety STATIC
 target_link_libraries(risc201_safety PUBLIC risc201_config)
 target_compile_options(risc201_safety PRIVATE -Wall -Wextra)
 
-add_executable(risc201-cu-demo "control_unit/main.cpp")
+add_library(risc201_asm STATIC
+  assembler_disassembler/isa.cpp
+  assembler_disassembler/formats.cpp
+  assembler_disassembler/macros.cpp
+  assembler_disassembler/assembler.cpp
+  assembler_disassembler/disassembler.cpp)
+target_include_directories(risc201_asm PUBLIC assembler_disassembler)
+target_compile_options(risc201_asm PRIVATE -Wall -Wextra)
+
+add_executable(risc201asm assembler_disassembler/main_asm.cpp)
+target_link_libraries(risc201asm PRIVATE risc201_asm)
+target_compile_options(risc201asm PRIVATE -Wall -Wextra)
+
+add_executable(risc201dis assembler_disassembler/main_dis.cpp)
+target_link_libraries(risc201dis PRIVATE risc201_asm)
+target_compile_options(risc201dis PRIVATE -Wall -Wextra)
+
+add_executable(risc201-cu-demo "legacy/main.cpp")
 target_link_libraries(risc201-cu-demo PRIVATE risc201_cu)
 target_compile_options(risc201-cu-demo PRIVATE -Wall -Wextra)
 
 add_executable(risc201-sim simulator_core/main.cpp)
-target_link_libraries(risc201-sim PRIVATE risc201_cu risc201_alu)
+target_link_libraries(risc201-sim PRIVATE risc201_cu risc201_alu risc201_asm)
 target_compile_options(risc201-sim PRIVATE -Wall -Wextra)
 
-if(RISC201_TUI AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/simulator_core/ui/tui.cpp")
+if(RISC201_TUI)
   include(FetchContent)
   FetchContent_Declare(ftxui
     GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
@@ -59,6 +79,7 @@ if(RISC201_TUI AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/simulator_core/ui/tui.cpp
   set(FTXUI_BUILD_DOCS OFF CACHE BOOL "" FORCE)
   set(FTXUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(ftxui)
+  target_sources(risc201-sim PRIVATE simulator_core/ui/tui.cpp)
   target_link_libraries(risc201-sim PRIVATE
     ftxui::screen ftxui::dom ftxui::component)
   target_compile_definitions(risc201-sim PRIVATE RISC201_HAS_TUI=1)
@@ -69,8 +90,10 @@ add_executable(risc201-tests
   tests/test_cpu.cpp
   tests/test_debugger.cpp
   tests/test_cu_programs.cpp
-  tests/test_programs.cpp)
-target_link_libraries(risc201-tests PRIVATE risc201_cu risc201_alu)
+  tests/test_programs.cpp
+  tests/test_assembler.cpp
+  tests/test_pipeline.cpp)
+target_link_libraries(risc201-tests PRIVATE risc201_cu risc201_alu risc201_asm)
 target_compile_options(risc201-tests PRIVATE -Wall -Wextra)
 
 add_executable(stack-guard-test tests/test_stack_guard.cpp)
@@ -84,3 +107,15 @@ target_compile_options(stack-visualizer-demo PRIVATE -Wall -Wextra)
 enable_testing()
 add_test(NAME risc201-tests COMMAND risc201-tests)
 add_test(NAME stack-guard-test COMMAND stack-guard-test)
+
+add_executable(memory-unit-test
+  tests/test_memory_unit.cpp)
+target_link_libraries(memory-unit-test PRIVATE risc201_cu risc201_safety)
+target_compile_options(memory-unit-test PRIVATE -Wall -Wextra)
+add_test(NAME memory-unit-test COMMAND memory-unit-test)
+
+add_executable(stack-visualizer-test
+  tests/test_visualizer.cpp)
+target_link_libraries(stack-visualizer-test PRIVATE risc201_safety)
+target_compile_options(stack-visualizer-test PRIVATE -Wall -Wextra)
+add_test(NAME stack-visualizer-test COMMAND stack-visualizer-test)

@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 
+#include "common/internal_registers.h"
 #include "isa_spec/isa.h"
 #include "simulator_core/core/exception.h"
 
@@ -19,6 +20,9 @@ struct StateView {
   const char* halt_reason = "";
   ExceptionCode fault_code = ExceptionCode::NONE;
   std::uint64_t fault_address = 0;
+
+  // the internal latches the microcode moves around
+  risc201::cu::InternalRegisters micro{};
 };
 
 }  // namespace risc201
