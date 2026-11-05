@@ -28,7 +28,7 @@ This protects return addresses (backward-edge integrity) only; it is not
 complete CFI, and it is not an implementation equivalent to Intel CET or ARM
 PAC.
 
-The integrated CPU regression matrix exercises 17 cases under each of
+The integrated CPU regression matrix exercises 20 cases under each of
 4-stage horizontal, 4-stage vertical, 6-stage horizontal, and 6-stage vertical
 execution: successful CALL/RET; CALL overflow; empty-stack RET underflow;
 valid data-region ST/LD; store below current SP; misaligned stack load;
@@ -43,11 +43,11 @@ The standalone pipelined processor also has runtime-safety checks, which are
 opt-in through its `runtime_safety` constructor argument. Its regression matrix
 checks LD/ST/FLD/FST and BNDCHK bounds and alignment, no register or memory
 side effect on invalid accesses, FP load/store value preservation, guarded
-stack stores, CALL overflow and push, and empty-stack RET across the four
-stage/encoding combinations. These are targeted functional regressions, not
-performance benchmarks or an exhaustive proof of memory safety. Neither
-implementation provides pointer-provenance enforcement or general data-flow
-isolation, and the test suite is not fuzz-tested.
+stack stores, successful CALL/RET, CALL overflow and push, and empty-stack
+RET across the four stage/encoding combinations. These targeted functional
+regressions are not performance benchmarks or an exhaustive proof of memory
+safety. Neither implementation provides pointer-provenance enforcement or
+general data-flow isolation, and the test suite is not fuzz-tested.
 
 ## Presentation demo
 

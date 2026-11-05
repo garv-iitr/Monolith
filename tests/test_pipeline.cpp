@@ -184,6 +184,23 @@ RISC201_TEST(pipeline_runtime_memory_safety_covers_all_memory_paths) {
     {
       PipelineProcessor cpu(config.layout, config.vertical,
                             risc201::cu::MemoryUnit::kDefaultWords, true);
+      cpu.load({enc_branch(Opcode::CALL, 2),
+                enc_halt(),
+                enc_halt(),
+                enc_imm(Opcode::MOV, 1, 0, 42),
+                enc_zero(Opcode::RET)});
+      cpu.run();
+
+      CHECK(cpu.halted());
+      CHECK(!cpu.faulted());
+      CHECK(cpu.read_reg(1) == 42);
+      CHECK(cpu.read_reg(REG_SP) ==
+            risc201::safety::MemoryMap::kStackTop);
+    }
+
+    {
+      PipelineProcessor cpu(config.layout, config.vertical,
+                            risc201::cu::MemoryUnit::kDefaultWords, true);
       cpu.write_mem(data_address, 0x3FC00000u);
       cpu.write_reg(1, data_address);
       cpu.load({enc_mem(Opcode::LD, 2, 1, 0),
