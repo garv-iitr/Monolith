@@ -426,15 +426,20 @@ int main(int argc, char* argv[]) {
             }
         } else if (mnemonic == "LI") {
             if (tokens.size() != 3) { 
-                cerr << "Error line " << line_number << ": LI requires 2 operands (register, 32-bit immediate or label).\n"; 
+                cerr << "Error line " << line_number << ": LI requires 2 operands (register, 32-bit immediate).\n"; 
                 return 1; 
             }
             if (!is_gpr(tokens[1])) {
                 cerr << "Error line " << line_number << ": LI requires a destination GPR (R0-R15, SP, RA), got '" << tokens[1] << "'.\n";
                 return 1;
             }
-            clean_instructions.push_back({line_number, {"LI_HI", tokens[1], tokens[2]}});
-            clean_instructions.push_back({line_number, {"LI_LO", tokens[1], tokens[2]}});
+            int32_t val    = parse_int(tokens[2], line_number);
+            uint32_t uval  = static_cast<uint32_t>(val);
+            uint16_t lower = static_cast<uint16_t>(uval & 0xFFFF); 
+            uint16_t upper = static_cast<uint16_t>((uval >> 16) & 0xFFFF);
+            
+            clean_instructions.push_back({line_number, {"MOVH", tokens[1], to_string(upper)}});
+            clean_instructions.push_back({line_number, {"ORU", tokens[1], tokens[1], to_string(lower)}});
             address_counter += 8;
         } else {
             clean_instructions.push_back({line_number, tokens});
@@ -457,38 +462,6 @@ int main(int argc, char* argv[]) {
         uint32_t line_num = item.line_number;
         string raw_mnemonic = tokens[0];
         to_upper(raw_mnemonic);
-        
-        if (raw_mnemonic == "LI_HI" || raw_mnemonic == "LI_LO") {
-            uint32_t rd = parse_gpr(tokens[1], line_num);
-            string target_token = tokens[2];
-            string upper_target = target_token;
-            to_upper(upper_target);
-            
-            uint32_t val32 = 0;
-            if (label_map.count(upper_target)) {
-                val32 = label_map.at(upper_target);
-            } else {
-                val32 = static_cast<uint32_t>(parse_int(target_token, line_num));
-            }
-            
-            uint32_t instr_32 = 0;
-            if (raw_mnemonic == "LI_HI") {
-                uint32_t hi16 = (val32 >> 16) & 0xFFFF;
-                instr_32 = (0x10 << 26) | (3 << 24) | (rd << 20) | hi16;
-            } else {
-                uint32_t lo16 = val32 & 0xFFFF;
-                instr_32 = (0x07 << 26) | (2 << 24) | (rd << 20) | (rd << 16) | lo16;
-            }
-            
-            if (as_hex) {
-                outfile << uppercase << setfill('0') << setw(8) << hex << instr_32 << "\n";
-            } else {
-                for (int bit = 31; bit >= 0; --bit) outfile << ((instr_32 >> bit) & 1);
-                outfile << "\n";
-            }
-            current_address += 4;
-            continue;
-        }
 
         uint32_t opcode = 0;
         uint32_t mode   = 0;
@@ -720,15 +693,15 @@ int main(int argc, char* argv[]) {
     outfile.close();
 
     if (print_symbols) {
-        cout << "\n--- Symbol Table ---\n";
+        cout << "\nSymbol Table \n";
         for (auto const& [label, addr] : label_map) {
             cout << setfill(' ') << left << setw(20) << label 
                  << " | DEC: " << setw(8) << dec << addr 
                  << " | HEX: 0x" << uppercase << setfill('0') << right << setw(4) << hex << addr << dec << "\n";
         }
-        cout << setfill(' ') << "--------------------\n";
+        cout << setfill(' ') << "\n";
     }
 
-    cout << "Assembly successful! Output written to " << output_file << "\n";
+    cout << "Output written to " << output_file << "/n";
     return 0;
 }
