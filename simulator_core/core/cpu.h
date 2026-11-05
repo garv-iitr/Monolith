@@ -85,6 +85,7 @@ class Cpu {
     ExceptionCode fault_code;
     std::uint64_t fault_address;
     std::vector<Word> frame_boundaries;
+    std::vector<Word> shadow_return_stack;
     std::size_t memory_journal_mark;
   };
 
@@ -121,7 +122,8 @@ class Cpu {
   Checkpoint checkpoint() {
     const std::size_t journal_mark = dp_.mem.begin_journal();
     return Checkpoint{dp_.snapshot(), cu_->snapshot(), fault_code_,
-                      fault_address_, frame_boundaries_, journal_mark};
+                      fault_address_, frame_boundaries_, shadow_return_stack_,
+                      journal_mark};
   }
 
   std::vector<risc201::cu::MemoryUnit::WriteDelta> finish_step(
@@ -138,6 +140,7 @@ class Cpu {
     fault_code_ = checkpoint.fault_code;
     fault_address_ = checkpoint.fault_address;
     frame_boundaries_ = checkpoint.frame_boundaries;
+    shadow_return_stack_ = checkpoint.shadow_return_stack;
     dp_.mem.clear_journal();
   }
 
@@ -150,11 +153,18 @@ class Cpu {
         const Opcode opcode = static_cast<Opcode>(get_opcode(dp_.regs.ir));
         if (opcode == Opcode::CALL &&
             cu_->signals().mem_op == risc201::cu::MemOp::WRITE) {
+          shadow_return_stack_.push_back(read_mem(read_reg(REG_SP)));
           frame_boundaries_.push_back(read_reg(REG_SP));
         } else if (opcode == Opcode::RET &&
                    cu_->signals().mem_op == risc201::cu::MemOp::READ &&
-                   !frame_boundaries_.empty()) {
-          frame_boundaries_.pop_back();
+                   (shadow_return_stack_.empty() ||
+                    dp_.regs.ld_result != shadow_return_stack_.back())) {
+          throw RuntimeException{ExceptionCode::SHADOW_STACK_MISMATCH,
+                                 read_reg(REG_SP)};
+        } else if (opcode == Opcode::RET &&
+                   cu_->signals().mem_op == risc201::cu::MemOp::READ) {
+          shadow_return_stack_.pop_back();
+          if (!frame_boundaries_.empty()) frame_boundaries_.pop_back();
         }
       }
       return alive;
@@ -182,6 +192,7 @@ class Cpu {
     fault_code_ = ExceptionCode::NONE;
     fault_address_ = 0;
     frame_boundaries_.clear();
+    shadow_return_stack_.clear();
   }
 
   bool halted() const { return dp_.halted; }
@@ -314,6 +325,7 @@ class Cpu {
   ExceptionCode fault_code_ = ExceptionCode::NONE;
   std::uint64_t fault_address_ = 0;
   std::vector<Word> frame_boundaries_;
+  std::vector<Word> shadow_return_stack_;
 };
 
 }  // namespace risc201

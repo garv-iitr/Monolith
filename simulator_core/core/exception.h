@@ -9,6 +9,7 @@ enum class ExceptionCode {
   MISALIGNED_ACCESS,
   STACK_OVERFLOW,
   STACK_UNDERFLOW,
+  SHADOW_STACK_MISMATCH,
   ILLEGAL_INSTRUCTION,
 };
 
@@ -20,6 +21,7 @@ inline const char* to_string(ExceptionCode code) {
     case ExceptionCode::MISALIGNED_ACCESS:   return "misaligned access";
     case ExceptionCode::STACK_OVERFLOW:      return "stack overflow";
     case ExceptionCode::STACK_UNDERFLOW:     return "stack underflow";
+    case ExceptionCode::SHADOW_STACK_MISMATCH: return "shadow stack mismatch";
     case ExceptionCode::ILLEGAL_INSTRUCTION: return "illegal instruction";
   }
   return "unknown";
