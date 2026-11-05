@@ -23,28 +23,6 @@ void validate_stack_pointer(Word sp,
   }
 }
 
-void validate_memory_address(Word addr, Word sp,
-                             const risc201::safety::StackGuard& guard) {
-  if (addr >= guard.limit() && addr < guard.base()) {
-    if (addr % risc201::safety::MemoryMap::kWordBytes != 0) {
-      throw RuntimeException{ExceptionCode::MISALIGNED_ACCESS, addr};
-    }
-    if (sp % risc201::safety::MemoryMap::kWordBytes != 0) {
-      throw RuntimeException{ExceptionCode::MISALIGNED_ACCESS, sp};
-    }
-    if (sp < guard.limit()) {
-      throw RuntimeException{ExceptionCode::STACK_OVERFLOW, sp};
-    }
-    if (sp >= guard.base()) {
-      throw RuntimeException{ExceptionCode::STACK_UNDERFLOW, addr};
-    }
-    if (addr < sp) throw RuntimeException{ExceptionCode::STACK_OVERFLOW, addr};
-    return;
-  }
-  raise_if_fault(guard.check_mem(
-      addr, risc201::safety::MemoryMap::kWordBytes, false, 0));
-}
-
 }  // namespace
 
 Datapath::Datapath(std::size_t mem_words, bool runtime_safety)
@@ -125,7 +103,9 @@ void Datapath::execute(const ControlSignals& sig, Word muimm) {
     } else if (opcode == Opcode::RET) {
       raise_if_fault(stack_guard.check_pop(rf.read(REG_SP), regs.pc));
     } else {
-      validate_memory_address(next.memchk_addr, rf.read(REG_SP), stack_guard);
+      raise_if_fault(stack_guard.check_access(
+          next.memchk_addr, rf.read(REG_SP),
+          risc201::safety::MemoryMap::kWordBytes, false, regs.pc));
     }
   }
 
@@ -142,12 +122,18 @@ void Datapath::execute(const ControlSignals& sig, Word muimm) {
     const Word sp = rf.read(REG_SP);
     if (opcode == Opcode::RET) {
       raise_if_fault(stack_guard.check_pop(sp, regs.pc));
-      validate_memory_address(next.mar, sp, stack_guard);
+      raise_if_fault(stack_guard.check_access(
+          next.mar, sp, risc201::safety::MemoryMap::kWordBytes, false,
+          regs.pc));
     } else if (opcode == Opcode::CALL) {
       validate_stack_pointer(sp, stack_guard);
-      validate_memory_address(next.mar, sp, stack_guard);
+      raise_if_fault(stack_guard.check_access(
+          next.mar, sp, risc201::safety::MemoryMap::kWordBytes, true,
+          regs.pc));
     } else {
-      validate_memory_address(next.mar, sp, stack_guard);
+      raise_if_fault(stack_guard.check_access(
+          next.mar, sp, risc201::safety::MemoryMap::kWordBytes,
+          sig.mem_op == MemOp::WRITE, regs.pc));
     }
   }
   mem.tick(next, sig, next);

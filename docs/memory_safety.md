@@ -28,7 +28,7 @@ This protects return addresses (backward-edge integrity) only; it is not
 complete CFI, and it is not an implementation equivalent to Intel CET or ARM
 PAC.
 
-The integrated CPU regression matrix exercises 17 cases under each of
+The integrated CPU regression matrix exercises 20 cases under each of
 4-stage horizontal, 4-stage vertical, 6-stage horizontal, and 6-stage vertical
 execution: successful CALL/RET; CALL overflow; empty-stack RET underflow;
 valid data-region ST/LD; store below current SP; misaligned stack load;
@@ -36,17 +36,18 @@ invalid and misaligned integer LD/ST; and invalid and misaligned FP FLD/FST.
 It also tests corrupted and unmatched return addresses and nested CALL/RET.
 Invalid stores verify the target word was not modified; the valid data
 round-trip verifies both value preservation and that an adjacent stack word
-is unchanged. The updated matrix passed `68/68` cases. These are executable
-functional regression results, not
-performance benchmarks or an exhaustive proof of memory safety.
+is unchanged. The CPU matrix also checks BNDCHK for valid, out-of-range, and
+misaligned addresses; the full matrix passed `80/80` cases.
 
-The FP cases verify memory-address fault detection and, for FST, absence of a
-memory write on fault; they do not assert floating-register contents. The
-matrix establishes representative invalid-access and stack-exception
-detection across those opcodes and configurations, including misaligned
-addresses within the stack window. It does not establish pointer-provenance
-enforcement, data-flow isolation, exhaustive coverage of all memory-capable
-instruction paths, or fuzz-tested behavior.
+The standalone pipelined processor also has runtime-safety checks, which are
+opt-in through its `runtime_safety` constructor argument. Its regression matrix
+checks LD/ST/FLD/FST and BNDCHK bounds and alignment, no register or memory
+side effect on invalid accesses, FP load/store value preservation, guarded
+stack stores, successful CALL/RET, CALL overflow and push, and empty-stack
+RET across the four stage/encoding combinations. These targeted functional
+regressions are not performance benchmarks or an exhaustive proof of memory
+safety. Neither implementation provides pointer-provenance enforcement or
+general data-flow isolation, and the test suite is not fuzz-tested.
 
 ## Presentation demo
 
@@ -97,10 +98,9 @@ The observed result is a halted CPU with `FAULT: bad memory access @ 0x0`.
 The test matrix also verifies stack overflow/underflow and misaligned-access
 faults by checking their fault codes and addresses.
 
-## Remaining work
+## Scope notes
 
-The on-demand and opt-in instruction-trace modes are verified. The trace
-reports word-level stack changes and the runtime's CALL/RET boundaries; it is
-not a timed animation, and it does not decode function names, source-level
-frames, or local variables. Broader memory-safety coverage beyond the listed
-regression matrix remains future work.
+The on-demand and opt-in instruction-trace modes report word-level stack
+changes and runtime CALL/RET boundaries. Decoding function names,
+source-level frames, or local variables is a visualization enhancement, not a
+memory-safety gap; this ISA has no source-level frame metadata.

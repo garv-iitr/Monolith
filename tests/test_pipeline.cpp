@@ -1,9 +1,12 @@
+#include <array>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "control_unit/pipeline_processor.h"
 #include "common/control_signals.h"
 #include "isa_spec/isa.h"
+#include "memory_safety/memory_map.h"
 #include "tests/test_framework.h"
 #include "tests/test_programs.h"
 
@@ -161,6 +164,214 @@ RISC201_TEST(pipeline_call_ret_hardware_stack_6stage) {
   CHECK(cpu.halted());
   CHECK_EQ(cpu.read_reg(1), 50u);
   CHECK(cpu.stats().uop_expansion_cycles > 0);
+}
+
+RISC201_TEST(pipeline_runtime_memory_safety_covers_all_memory_paths) {
+  struct Configuration {
+    StageLayout layout;
+    bool vertical;
+  };
+  const std::array<Configuration, 4> configurations = {{
+      {StageLayout::FOUR_STAGE, false},
+      {StageLayout::FOUR_STAGE, true},
+      {StageLayout::SIX_STAGE, false},
+      {StageLayout::SIX_STAGE, true},
+  }};
+  constexpr Word data_address = 0x10000;
+  constexpr Word sentinel = 0xA55A1234;
+
+  for (const Configuration& config : configurations) {
+    {
+      PipelineProcessor cpu(config.layout, config.vertical,
+                            risc201::cu::MemoryUnit::kDefaultWords, true);
+      cpu.load({enc_branch(Opcode::CALL, 2),
+                enc_halt(),
+                enc_halt(),
+                enc_imm(Opcode::MOV, 1, 0, 42),
+                enc_zero(Opcode::RET)});
+      cpu.run();
+
+      CHECK(cpu.halted());
+      CHECK(!cpu.faulted());
+      CHECK(cpu.read_reg(1) == 42);
+      CHECK(cpu.read_reg(REG_SP) ==
+            risc201::safety::MemoryMap::kStackTop);
+    }
+
+    {
+      PipelineProcessor cpu(config.layout, config.vertical,
+                            risc201::cu::MemoryUnit::kDefaultWords, true);
+      cpu.write_mem(data_address, 0x3FC00000u);
+      cpu.write_reg(1, data_address);
+      cpu.load({enc_mem(Opcode::LD, 2, 1, 0),
+                enc_mem(Opcode::ST, 2, 1, 4),
+                enc_mem(Opcode::FLD, 3, 1, 0),
+                enc_mem(Opcode::FST, 3, 1, 8),
+                enc_halt()});
+      cpu.run();
+
+      CHECK(cpu.halted());
+      CHECK(!cpu.faulted());
+      CHECK(cpu.read_reg(2) == 0x3FC00000u);
+      CHECK(cpu.read_freg(3) == 0x3FC00000u);
+      CHECK(cpu.read_mem(data_address + 4) == 0x3FC00000u);
+      CHECK(cpu.read_mem(data_address + 8) == 0x3FC00000u);
+    }
+
+    {
+      PipelineProcessor cpu(config.layout, config.vertical,
+                            risc201::cu::MemoryUnit::kDefaultWords, true);
+      cpu.write_mem(risc201::safety::MemoryMap::kStackTop - 4, sentinel);
+      cpu.load({enc_branch(Opcode::CALL, 1),
+                enc_halt(),
+                enc_halt()});
+      cpu.run();
+
+      CHECK(cpu.halted());
+      CHECK(!cpu.faulted());
+      CHECK(cpu.read_reg(REG_SP) ==
+            risc201::safety::MemoryMap::kStackTop - 4);
+      CHECK(cpu.read_mem(risc201::safety::MemoryMap::kStackTop - 4) == 4u);
+    }
+
+    for (Opcode op : {Opcode::LD, Opcode::FLD}) {
+      for (const auto& address_case :
+           {std::pair<Word, ExceptionCode>{0xFFC, ExceptionCode::BAD_MEM_ACCESS},
+            {0x10001, ExceptionCode::MISALIGNED_ACCESS},
+            {risc201::safety::MemoryMap::kAddressSpaceBytes,
+             ExceptionCode::BAD_MEM_ACCESS}}) {
+        PipelineProcessor cpu(config.layout, config.vertical,
+                              risc201::cu::MemoryUnit::kDefaultWords, true);
+        cpu.write_reg(1, address_case.first);
+        if (op == Opcode::LD) {
+          cpu.write_reg(2, sentinel);
+        } else {
+          cpu.write_freg(2, sentinel);
+        }
+        cpu.load({enc_mem(op, 2, 1, 0), enc_halt()});
+        cpu.run();
+
+        CHECK(cpu.halted());
+        CHECK(cpu.fault_code() == address_case.second);
+        CHECK(cpu.fault_address() == address_case.first);
+        CHECK(op == Opcode::LD ? cpu.read_reg(2) == sentinel
+                               : cpu.read_freg(2) == sentinel);
+      }
+    }
+
+    for (Opcode op : {Opcode::ST, Opcode::FST}) {
+      for (const auto& address_case :
+           {std::pair<Word, ExceptionCode>{0xFFC, ExceptionCode::BAD_MEM_ACCESS},
+            {0x10001, ExceptionCode::MISALIGNED_ACCESS},
+            {risc201::safety::MemoryMap::kAddressSpaceBytes,
+             ExceptionCode::BAD_MEM_ACCESS}}) {
+        PipelineProcessor cpu(config.layout, config.vertical,
+                              risc201::cu::MemoryUnit::kDefaultWords, true);
+        const Word preserved_address =
+            address_case.first == 0xFFC
+                ? 0xFFC
+                : address_case.first == 0x10001
+                      ? data_address
+                      : risc201::safety::MemoryMap::kStackTop - 4;
+        cpu.write_mem(preserved_address, sentinel);
+        cpu.write_reg(1, address_case.first);
+        if (op == Opcode::ST) {
+          cpu.write_reg(2, 0xDEADBEEFu);
+        } else {
+          cpu.write_freg(2, 0xDEADBEEFu);
+        }
+        cpu.load({enc_mem(op, 2, 1, 0), enc_halt()});
+        cpu.run();
+
+        CHECK(cpu.halted());
+        CHECK(cpu.fault_code() == address_case.second);
+        CHECK(cpu.fault_address() == address_case.first);
+        CHECK(cpu.read_mem(preserved_address) == sentinel);
+      }
+    }
+
+    for (const auto& address_case :
+         {std::pair<Word, ExceptionCode>{data_address, ExceptionCode::NONE},
+          {0xFFC, ExceptionCode::BAD_MEM_ACCESS},
+          {0x10001, ExceptionCode::MISALIGNED_ACCESS},
+          {risc201::safety::MemoryMap::kAddressSpaceBytes,
+           ExceptionCode::BAD_MEM_ACCESS}}) {
+      PipelineProcessor cpu(config.layout, config.vertical,
+                            risc201::cu::MemoryUnit::kDefaultWords, true);
+      cpu.write_reg(1, address_case.first);
+      cpu.load({enc_mem(Opcode::BNDCHK, 0, 1, 0), enc_halt()});
+      cpu.run();
+
+      CHECK(cpu.halted());
+      CHECK(cpu.fault_code() == address_case.second);
+      if (address_case.second != ExceptionCode::NONE)
+        CHECK(cpu.fault_address() == address_case.first);
+    }
+
+    {
+      PipelineProcessor cpu(config.layout, config.vertical,
+                            risc201::cu::MemoryUnit::kDefaultWords, true);
+      cpu.write_reg(REG_SP, risc201::safety::MemoryMap::kStackTop);
+      cpu.load({enc_zero(Opcode::RET)});
+      cpu.run();
+      CHECK(cpu.halted());
+      CHECK(cpu.fault_code() == ExceptionCode::STACK_UNDERFLOW);
+      CHECK(cpu.fault_address() == risc201::safety::MemoryMap::kStackTop);
+    }
+
+    {
+      PipelineProcessor cpu(config.layout, config.vertical,
+                            risc201::cu::MemoryUnit::kDefaultWords, true);
+      constexpr Word stack_address =
+          risc201::safety::MemoryMap::kStackLimit - 4;
+      cpu.write_mem(stack_address, sentinel);
+      cpu.write_reg(REG_SP, risc201::safety::MemoryMap::kStackLimit);
+      cpu.load({enc_branch(Opcode::CALL, 0)});
+      cpu.run();
+      CHECK(cpu.halted());
+      CHECK(cpu.fault_code() == ExceptionCode::STACK_OVERFLOW);
+      CHECK(cpu.fault_address() == stack_address);
+      CHECK(cpu.read_reg(REG_SP) == risc201::safety::MemoryMap::kStackLimit);
+      CHECK(cpu.read_mem(stack_address) == sentinel);
+    }
+
+    {
+      PipelineProcessor cpu(config.layout, config.vertical,
+                            risc201::cu::MemoryUnit::kDefaultWords, true);
+      constexpr Word stack_address =
+          risc201::safety::MemoryMap::kStackTop - 4;
+      cpu.write_mem(stack_address, sentinel);
+      cpu.write_reg(REG_SP, stack_address);
+      cpu.write_reg(1, stack_address);
+      cpu.write_reg(2, 0xDEADBEEFu);
+      cpu.load({enc_mem(Opcode::ST, 2, 1, 0), enc_halt()});
+      cpu.run();
+      CHECK(cpu.halted());
+      CHECK(!cpu.faulted());
+      CHECK(cpu.read_mem(stack_address) == 0xDEADBEEFu);
+    }
+
+    for (Opcode op : {Opcode::LD, Opcode::ST}) {
+      PipelineProcessor cpu(config.layout, config.vertical,
+                            risc201::cu::MemoryUnit::kDefaultWords, true);
+      constexpr Word stack_address =
+          risc201::safety::MemoryMap::kStackTop - 8;
+      constexpr Word current_sp =
+          risc201::safety::MemoryMap::kStackTop - 4;
+      cpu.write_mem(stack_address, sentinel);
+      cpu.write_reg(REG_SP, current_sp);
+      cpu.write_reg(1, stack_address);
+      cpu.write_reg(2, op == Opcode::LD ? sentinel : 0xDEADBEEFu);
+      cpu.load({enc_mem(op, 2, 1, 0), enc_halt()});
+      cpu.run();
+      CHECK(cpu.halted());
+      CHECK(cpu.fault_code() == ExceptionCode::STACK_OVERFLOW);
+      CHECK(cpu.fault_address() == stack_address);
+      CHECK(cpu.read_reg(REG_SP) == current_sp);
+      CHECK(cpu.read_mem(stack_address) == sentinel);
+      if (op == Opcode::LD) CHECK(cpu.read_reg(2) == sentinel);
+    }
+  }
 }
 
 RISC201_TEST(pipeline_benchmark_evaluation_comparison) {

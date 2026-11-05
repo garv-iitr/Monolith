@@ -106,6 +106,25 @@ static void test_stack_boundaries_and_alignment() {
          ::ExceptionCode::MISALIGNED_ACCESS);
 }
 
+static void test_access_checks_cover_data_and_active_stack() {
+  StackGuard g;
+  assert(g.check_access(0x10000, g.base(), 4, false, 0).code ==
+         ::ExceptionCode::NONE);
+  assert(g.check_access(0x0FFC, g.base(), 4, false, 0).code ==
+         ::ExceptionCode::BAD_MEM_ACCESS);
+  assert(g.check_access(0x1001, g.base(), 4, false, 0).code ==
+         ::ExceptionCode::MISALIGNED_ACCESS);
+
+  assert(g.check_access(g.limit() + 4, g.limit() + 4, 4, true, 0).code ==
+         ::ExceptionCode::NONE);
+  assert(g.check_access(g.limit(), g.limit() + 4, 4, false, 0).code ==
+         ::ExceptionCode::STACK_OVERFLOW);
+  assert(g.check_access(g.base() - 4, g.base(), 4, false, 0).code ==
+         ::ExceptionCode::STACK_UNDERFLOW);
+  assert(g.check_access(g.base() - 4, g.base() - 3, 4, false, 0).code ==
+         ::ExceptionCode::MISALIGNED_ACCESS);
+}
+
 static void test_custom_stack_bounds() {
   StackGuard small(0x2000, 0x1800);
   assert(small.push_ok(0x2000));
@@ -134,6 +153,8 @@ int main() {
   std::printf("  data_region_edges.... PASS\n");
   test_stack_boundaries_and_alignment();
   std::printf("  stack_boundaries..... PASS\n");
+  test_access_checks_cover_data_and_active_stack();
+  std::printf("  access_checks........ PASS\n");
   test_custom_stack_bounds();
   std::printf("  custom_stack_bounds.. PASS\n");
   std::printf("All tests passed.\n");
