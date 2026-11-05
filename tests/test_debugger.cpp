@@ -117,6 +117,25 @@ RISC201_TEST(debugger_step_back_restores_call_stack_markers) {
   CHECK(dbg.cpu().pc() == 0u);
 }
 
+RISC201_TEST(debugger_step_back_return_restores_shadow_stack) {
+  risc201::Debugger dbg;
+  dbg.load({(static_cast<Word>(Opcode::CALL) << 26) | 1u,
+            enc_halt(),
+            static_cast<Word>(Opcode::RET) << 26});
+
+  CHECK(dbg.step_instruction());
+  CHECK(dbg.cpu().read_reg(REG_SP) ==
+        risc201::safety::MemoryMap::kStackTop - 4);
+  CHECK(dbg.step_instruction());
+  CHECK(dbg.cpu().read_reg(REG_SP) == risc201::safety::MemoryMap::kStackTop);
+  CHECK(dbg.step_back_instruction());
+  CHECK(dbg.cpu().read_reg(REG_SP) ==
+        risc201::safety::MemoryMap::kStackTop - 4);
+  CHECK(dbg.step_instruction());
+  CHECK(!dbg.cpu().faulted());
+  CHECK(dbg.cpu().read_reg(REG_SP) == risc201::safety::MemoryMap::kStackTop);
+}
+
 RISC201_TEST(debugger_reverse_history_is_bounded) {
   risc201::Debugger dbg;
   std::vector<Word> code(risc201::Debugger::kHistoryLimit + 8,

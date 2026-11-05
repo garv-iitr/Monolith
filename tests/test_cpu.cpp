@@ -198,6 +198,67 @@ RISC201_TEST(cpu_call_and_return_use_guarded_stack) {
   CHECK(cpu.read_mem(risc201::safety::MemoryMap::kStackTop - 4) == 4u);
 }
 
+RISC201_TEST(cpu_nested_calls_and_returns_restore_stack) {
+  risc201::Cpu cpu;
+  cpu.load({enc_branch(Opcode::CALL, 1),
+            enc_halt(),
+            enc_branch(Opcode::CALL, 1),
+            enc_zero(Opcode::RET),
+            enc_zero(Opcode::RET)});
+  cpu.run();
+
+  CHECK(cpu.halted());
+  CHECK(!cpu.faulted());
+  CHECK(cpu.read_reg(REG_SP) == risc201::safety::MemoryMap::kStackTop);
+  CHECK(cpu.read_mem(risc201::safety::MemoryMap::kStackTop - 4) == 4u);
+  CHECK(cpu.read_mem(risc201::safety::MemoryMap::kStackTop - 8) == 12u);
+}
+
+RISC201_TEST(cpu_checkpoint_restore_restores_shadow_return_stack) {
+  risc201::Cpu cpu;
+  cpu.load({enc_branch(Opcode::CALL, 1),
+            enc_halt(),
+            enc_zero(Opcode::RET)});
+
+  for (int i = 0; i < 100 && cpu.stack_frame_boundaries().empty(); ++i)
+    cpu.step();
+  CHECK(cpu.stack_frame_boundaries().size() == 1u);
+
+  const auto checkpoint = cpu.checkpoint();
+  cpu.run();
+  const auto memory =
+      cpu.finish_step(checkpoint.memory_journal_mark);
+  CHECK(cpu.halted());
+  CHECK(!cpu.faulted());
+
+  cpu.restore(checkpoint, memory);
+  cpu.run();
+  CHECK(cpu.halted());
+  CHECK(!cpu.faulted());
+  CHECK(cpu.read_reg(REG_SP) == risc201::safety::MemoryMap::kStackTop);
+}
+
+RISC201_TEST(cpu_reset_clears_shadow_return_stack) {
+  risc201::Cpu cpu;
+  cpu.load({enc_branch(Opcode::CALL, 1),
+            enc_halt(),
+            enc_zero(Opcode::RET)});
+  for (int i = 0; i < 100 && cpu.stack_frame_boundaries().empty(); ++i)
+    cpu.step();
+
+  cpu.reset();
+  constexpr Word return_slot =
+      risc201::safety::MemoryMap::kStackTop - 4;
+  cpu.write_reg(REG_SP, return_slot);
+  cpu.write_mem(return_slot, 4u);
+  cpu.load({enc_zero(Opcode::RET)});
+  cpu.run();
+
+  CHECK(cpu.faulted());
+  CHECK(cpu.fault_code() == ExceptionCode::SHADOW_STACK_MISMATCH);
+  CHECK(cpu.read_reg(REG_SP) == return_slot);
+}
+
 RISC201_TEST(cpu_memory_safety_configuration_matrix) {
   struct Configuration {
     const char* name;
@@ -214,7 +275,7 @@ RISC201_TEST(cpu_memory_safety_configuration_matrix) {
       {"6-stage vertical", risc201::cu::StageLayout::SIX_STAGE,
        risc201::ControlEncoding::VERTICAL},
   }};
-  const std::array<const char*, 14> scenarios = {{
+  const std::array<const char*, 17> scenarios = {{
       "CALL/RET round-trip", "CALL stack overflow", "empty RET underflow",
       "valid data store/load", "stack store below SP",
       "misaligned stack load",
@@ -222,6 +283,7 @@ RISC201_TEST(cpu_memory_safety_configuration_matrix) {
       "integer store bad address", "integer store misaligned",
       "FP load bad address", "FP load misaligned",
       "FP store bad address", "FP store misaligned",
+      "corrupted return address", "nested CALL/RET", "unmatched RET",
   }};
 
   std::size_t passed = 0;
@@ -367,6 +429,49 @@ RISC201_TEST(cpu_memory_safety_configuration_matrix) {
           ok = cpu.halted() && cpu.fault_code() == expected &&
                cpu.fault_address() == address &&
                cpu.read_mem(aligned_address) == preserved_word;
+          break;
+        }
+        case 14: {
+          cpu.load({enc_branch(Opcode::CALL, 1),
+                    enc_halt(),
+                    enc_zero(Opcode::RET)});
+          for (int i = 0; i < 100 && cpu.stack_frame_boundaries().empty(); ++i)
+            cpu.step();
+          constexpr Word return_slot =
+              risc201::safety::MemoryMap::kStackTop - 4;
+          constexpr Word corrupted_return_pc = 0x100u;
+          cpu.write_mem(return_slot, corrupted_return_pc);
+          cpu.run();
+          ok = cpu.halted() &&
+               cpu.fault_code() == ExceptionCode::SHADOW_STACK_MISMATCH &&
+               cpu.fault_address() == return_slot &&
+               cpu.pc() != corrupted_return_pc &&
+               cpu.read_reg(REG_SP) == return_slot;
+          break;
+        }
+        case 15:
+          cpu.load({enc_branch(Opcode::CALL, 1),
+                    enc_halt(),
+                    enc_branch(Opcode::CALL, 1),
+                    enc_zero(Opcode::RET),
+                    enc_zero(Opcode::RET)});
+          cpu.run();
+          ok = cpu.halted() && !cpu.faulted() &&
+               cpu.read_reg(REG_SP) == risc201::safety::MemoryMap::kStackTop &&
+               cpu.read_mem(risc201::safety::MemoryMap::kStackTop - 4) == 4u &&
+               cpu.read_mem(risc201::safety::MemoryMap::kStackTop - 8) == 12u;
+          break;
+        case 16: {
+          constexpr Word return_slot =
+              risc201::safety::MemoryMap::kStackTop - 4;
+          cpu.write_reg(REG_SP, return_slot);
+          cpu.write_mem(return_slot, 4u);
+          cpu.load({enc_zero(Opcode::RET)});
+          cpu.run();
+          ok = cpu.halted() &&
+               cpu.fault_code() == ExceptionCode::SHADOW_STACK_MISMATCH &&
+               cpu.fault_address() == return_slot &&
+               cpu.read_reg(REG_SP) == return_slot;
           break;
         }
       }
