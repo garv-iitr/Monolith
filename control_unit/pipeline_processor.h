@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "alu/alu.h"
+#include "fpu/fpu.h"
 #include "control_unit/control_unit.h"
 #include "control_unit/cu_types.h"
 #include "datapath/memory_unit.h"
@@ -100,6 +101,7 @@ class PipelineProcessor {
   std::unique_ptr<IPipelineControlUnit> cu_;
   cu::MemoryUnit mem_;
   ALU alu_;
+  FPU fpu_;
   safety::StackGuard stack_guard_;
   bool runtime_safety_ = false;
 

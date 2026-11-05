@@ -202,26 +202,13 @@ bool PipelineProcessor::step() {
                         : Word{0};
 
       if (of_ex_.control.ex.is_fpu) {
-        float fa = 0.0f, fb = 0.0f;
-        const std::uint32_t ba = static_cast<std::uint32_t>(op_a);
-        const std::uint32_t bb = static_cast<std::uint32_t>(op_b);
-        std::memcpy(&fa, &ba, sizeof(fa));
-        std::memcpy(&fb, &bb, sizeof(fb));
-
-        switch (of_ex_.control.ex.fpu_op) {
-          case cu::FpuOp::FADD: { float r = fa + fb; std::memcpy(&next_ex_stage.alu_result, &r, 4); break; }
-          case cu::FpuOp::FSUB: { float r = fa - fb; std::memcpy(&next_ex_stage.alu_result, &r, 4); break; }
-          case cu::FpuOp::FMUL: { float r = fa * fb; std::memcpy(&next_ex_stage.alu_result, &r, 4); break; }
-          case cu::FpuOp::FDIV: { float r = fa / fb; std::memcpy(&next_ex_stage.alu_result, &r, 4); break; }
-          case cu::FpuOp::FMOV: { next_ex_stage.alu_result = op_b; break; }
-          case cu::FpuOp::FCMP: {
-            flags_.Z = (fa == fb);
-            flags_.N = (fa < fb);
-            flags_.C = false;
-            flags_.V = false;
-            break;
-          }
-          default: next_ex_stage.alu_result = op_b; break;
+        const FpuResult res = fpu_.execute(of_ex_.control.ex.fpu_op, op_a, op_b);
+        next_ex_stage.alu_result = res.value;
+        if (of_ex_.control.ex.set_flags) {
+          flags_.Z = res.zero;
+          flags_.N = res.negative;
+          flags_.C = res.carry;
+          flags_.V = res.overflow;
         }
       } else if (of_ex_.control.ex.alu_op != cu::AluOp::NOP) {
         const AluResult res = alu_.execute(of_ex_.control.ex.alu_op, op_a, op_b);
