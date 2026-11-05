@@ -13,3 +13,5 @@ compile_commands.json
 *.o
 test_sg
 demo_viz
+risc201asm
+risc201dis
