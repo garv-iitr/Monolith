@@ -1,123 +1,181 @@
-# RISC201 Processor Hardware Specification
+# RISC201 Microarchitecture & Hardware Specification
 
 **Course:** CSC-201 Computer Organization & Architecture  
 **Architecture:** 32-bit Load-Store RISC with Microprogrammed Control Store  
-**Pipelines:** 4-Stage and 6-Stage Synchronous Datapaths  
+**Pipelines:** Synchronous 4-Stage and 6-Stage Datapaths with Dual Control ROMs  
 
 ---
 
-## 1. System Overview
+## 1. System Overview & Architectural State
 
-The RISC201 is a cycle-accurate 32-bit microprocessor. It implements a load-store architecture where arithmetic and logical operations operate strictly on registers, while memory is accessed exclusively through dedicated load (`LD`, `FLD`) and store (`ST`, `FST`) instructions.
+The RISC201 is a cycle-accurate 32-bit microprocessor designed for high instruction throughput, predictable memory safety, and programmable microcode control. It implements a strict load-store architecture: all computational operations (arithmetic, logic, shifts, floating-point math) operate exclusively on registers, while external memory is accessed solely through dedicated load (`LD`, `FLD`) and store (`ST`, `FST`) instructions.
 
-### Architectural State
-- **General-Purpose Registers (GPRs):** 16 registers (`r0`–`r15`), 32 bits wide.
-  - `r0`: Hardwired to constant zero. Writes to `r0` are discarded.
-  - `r1`–`r12`: General-purpose operand and scratch registers.
-  - `r13`: Swap temporary register used in macro expansions.
-  - `r14` (`sp`): Hardware stack pointer for full-descending stack.
-  - `r15` (`ra`): Subroutine return address register.
-- **Floating-Point Registers (FPRs):** 16 registers (`f0`–`f15`), 32 bits wide, storing IEEE-754 single-precision floating-point values.
-- **Program Counter (PC):** 32-bit register pointing to the current instruction address. Instructions are 32 bits wide and aligned on 4-byte boundaries.
-- **Condition Flags:** `Z` (Zero), `N` (Negative), `C` (Carry), `V` (Overflow).
+```mermaid
+graph TD
+    subgraph RegState [" Architectural Register State "]
+        GPR["16 General-Purpose Registers (32-bit)<br/>r0 (zero), r1-r12 (scratch), r13 (swap temp),<br/>r14 (sp / stack pointer), r15 (ra / link register)"]
+        FPR["16 Floating-Point Registers (32-bit)<br/>f0 - f15 (IEEE-754 Single Precision)"]
+        FLAGS["Condition Code Flags (NZCV)<br/>Zero (Z), Negative (N), Carry (C), Overflow (V)"]
+        PC["Program Counter (32-bit)<br/>Word-aligned instruction pointer"]
+    end
+
+    subgraph MemoryState [" Memory Hierarchy (128 KiB / 32,768 Words) "]
+        TEXT["Text Segment: 0x00000 - 0x0FFFF (Read-Only)"]
+        DATA["Data Segment: 0x10000 - 0x1EFFF (Read-Write)"]
+        STACK["Guarded Stack: 0x1F000 - 0x20000 (Full-Descending, SP=0x20000)"]
+    end
+```
+
+### Architectural State Elements
+1. **General-Purpose Register File (GPR):**
+   - 16 registers (`r0`–`r15`), each 32 bits wide.
+   - `r0`: Hardwired to constant zero (`0x00000000`). Writes to `r0` are silently discarded.
+   - `r1`–`r12`: General-purpose operand, scratch, and function parameter registers.
+   - `r13`: Reserved macro swap temporary register used by assembler expansions.
+   - `r14` (`sp`): Hardware stack pointer for the full-descending stack. Initialized to `0x20000`.
+   - `r15` (`ra`): Subroutine return address link register populated by `CALL` and consumed by `RET`.
+2. **Floating-Point Register File (FPR):**
+   - 16 registers (`f0`–`f15`), each 32 bits wide, storing IEEE-754 single-precision floating-point numbers.
+   - Distinct and isolated from the integer register file; transfers between integer and FP domains are conducted explicitly through memory or stack operations (`ST`/`FLD` or `FST`/`LD`).
+3. **Status & Condition Flags:**
+   - **`Z` (Zero):** Set if ALU or FPU result is zero.
+   - **`N` (Negative):** Set if the sign bit (bit 31) of the result is 1.
+   - **`C` (Carry / Borrow):** Set on unsigned carry out from addition or borrow during subtraction.
+   - **`V` (Signed Overflow):** Set when signed addition or subtraction produces an overflow into the sign bit ($A_{\text{sign}} == B_{\text{sign}} \neq \text{Res}_{\text{sign}}$).
+4. **Program Counter (`PC`):**
+   - 32-bit byte address pointing to the instruction memory word. Instructions are 32 bits (4 bytes) wide and must be 4-byte aligned (`PC % 4 == 0`).
 
 ---
 
-## 2. Datapath Evolution: Single-Bus vs. Pipelined
+## 2. Microarchitectural Evolution: Single-Bus vs. Pipelined
 
-### Single-Bus Baseline Architecture (Sarangi Figure 9.22)
-In the classic microprogrammed architecture, all internal registers (`PC`, `IR`, `MAR`, `MDR`, `A`, `B`, `aluResult`, register file) share a single internal data bus. Every data transfer must occur serially, requiring multiple clock cycles per macro-instruction:
-- **Instruction Fetch (4 cycles):** `PC -> MAR`, `MemRead`, `MDR -> Bus -> IR`, `PC = PC + 4`.
-- **Operand Fetch (2 cycles):** `IR -> RegFile -> A`, `IR -> RegFile -> B`.
-- **ALU Execution (1 cycle):** `A, B -> ALU -> aluResult`.
-- **Memory Access (2 cycles):** `aluResult -> MAR`, `Bus -> MDR -> DataMem`.
-- **Writeback (1 cycle):** `MDR / aluResult -> Bus -> RegFile`.
+### A. The Baseline Single-Bus Architecture (`legacy/`)
+In the initial project milestone, the team implemented a classic single-bus microprogrammed datapath (`legacy/datapath/datapath.cpp`, `legacy/common/shared_bus.h`, `legacy/common/internal_registers.h`) following the canonical design described in computer organization textbooks (e.g. Sarangi Figure 9.22).
 
-Because the bus serializes all transfers, the baseline processor averages a high CPI of 9.8 to 10.4.
+In this single-bus model:
+- All functional units and registers (`PC`, `IR`, `MAR`, `MDR`, `A`, `B`, `aluResult`, and the register file) were connected to a **single shared 32-bit internal bus**.
+- Only one register could drive the bus in any given clock cycle, and only one destination could latch data from it.
+- As a consequence, every macro-instruction required a long sequence of micro-operations:
+  1. `PC -> MAR`, `MemRead`, `MDR -> Bus -> IR`, `PC = PC + 4` (Fetch: 4 cycles)
+  2. `IR -> RegFile -> A`, `IR -> RegFile -> B` (Decode: 2 cycles)
+  3. `A, B -> ALU -> aluResult` (Execute: 1 cycle)
+  4. `aluResult -> MAR`, `Bus -> MDR -> DataMem` (Memory: 2 cycles)
+  5. `MDR / aluResult -> Bus -> RegFile` (Writeback: 1 cycle)
+- **Bottleneck:** Every instruction required 10 to 11 clock cycles. The average CPI across standard benchmarks was **9.8 to 10.4**, severely limiting throughput.
 
-### Pipelined Architecture
-The RISC201 replaces the shared bus bottleneck with dedicated, synchronous inter-stage pipeline registers (`IfOfLatch`, `OfExLatch`, `ExMaRwLatch`, etc.), allowing overlapping execution where an instruction begins each clock cycle.
+### B. The Production Synchronous Pipelined Architecture
+To satisfy the course requirement for high-performance pipelined processing, the team developed [`control_unit/pipeline_processor`](file:///e:/CSC-201/Monolith/control_unit/pipeline_processor.h). The shared bus was eliminated in favor of **dedicated, point-to-point inter-stage pipeline registers** (`IfOfLatch`, `OfExLatch`, `ExStageLatch`, `ChkMaLatch`, `MaRwLatch`). 
+
+By allowing multiple instructions to execute concurrently across different hardware stages, the processor starts a new instruction every clock cycle in the absence of hazards, achieving a sustained CPI of **1.35 to 2.17** and delivering a **4.8x to 7.3x speedup** over the single-bus baseline.
 
 ```mermaid
 graph LR
-    subgraph Pipelined [" RISC201 Pipelined Execution "]
-        IF["[IF] Fetch"] -->|"IfOfLatch"| OF["[OF] Decode"]
-        OF -->|"OfExLatch"| EX["[EX] Execute"]
-        EX -->|"ExMaLatch"| MA["[MA] Memory"]
-        MA -->|"MaRwLatch"| RW["[RW] Writeback"]
+    subgraph SingleBus [" Legacy Single-Bus Baseline (CPI ~ 10.0) "]
+        BUS["Shared 32-bit Internal Data Bus"]
+        MAR["MAR"] <--> BUS
+        MDR["MDR"] <--> BUS
+        PC_L["PC"] <--> BUS
+        IR_L["IR"] <--> BUS
+        ALU_L["ALU"] <--> BUS
+        RF_L["RegFile"] <--> BUS
+    end
+
+    subgraph PipelinedDatapath [" Production Pipelined Architecture (CPI ~ 1.4 - 2.1) "]
+        IF_P["[IF] Fetch"] -->|"IfOfLatch"| OF_P["[OF] Decode"]
+        OF_P -->|"OfExLatch"| EX_P["[EX] Execute"]
+        EX_P -->|"ExStageLatch"| MA_P["[MA] Memory"]
+        MA_P -->|"MaRwLatch"| RW_P["[RW] Writeback"]
     end
 ```
 
 ---
 
-## 3. Pipeline Configurations
+## 3. Pipeline Configurations: 4-Stage vs. 6-Stage
 
-The processor supports two distinct pipeline configurations in `control_unit/pipeline_processor.cpp`:
+The processor supports two runtime-selectable pipeline configurations (`--stages 4` and `--stages 6`):
 
-### A. 4-Stage Pipeline (`[IF] -> [OF] -> [EX] -> [MA/RW]`)
-Designed for low instruction latency and compact datapath area:
-1. **Fetch (`IF`):** Fetches 32-bit instruction from memory at `PC`; computes `PC + 4`.
-2. **Decode & Operand Fetch (`OF`):** Decodes instruction format; accesses Control ROM; reads source registers (`rs1`, `rs2`); generates immediates; evaluates load-use hazard interlocks.
-3. **Execute (`EX`):** ALU/FPU execution; effective address calculation; branch condition evaluation; RAW data forwarding.
-4. **Memory Access & Writeback (`MA/RW`):** Combined stage that performs data memory access (`LD`/`ST`), enforces memory safety bounds, and writes back result to destination register `rd`.
+### 1. 4-Stage Datapath (`[IF] -> [OF] -> [EX] -> [MA/RW]`)
+Designed for low instruction latency and compact control logic:
+- **Fetch (`IF`):** Fetches 32-bit instruction from memory at `PC`; computes sequential target `PC + 4`.
+- **Decode & Operand Fetch (`OF`):** Decodes instruction word; accesses Control Store ROM; reads source registers (`rs1`, `rs2` or `fs1`, `fs2`); extracts immediate values; checks load-use hazard interlocks.
+- **Execute (`EX`):** Integer ALU or IEEE-754 FPU operation; effective address computation (`base + offset`); branch condition evaluation; multi-level RAW data forwarding.
+- **Memory Access & Writeback (`MA/RW`):** Combined stage that performs data memory access (`LD`, `ST`, `FLD`, `FST`), executes inline `StackGuard` checks, and writes back computational results to destination registers (`rd` or `fd`).
+- **Hazard Characteristics:**
+  - **Branch Penalty:** 2 cycles (evaluated in `EX`; flushes `IF/OF` and `OF/EX`).
+  - **Load-Use Stall:** 1 bubble cycle (data available at the end of `MA/RW` and forwarded immediately).
 
-- **Branch Penalty:** 2 cycles (resolved in `EX`; flushes `IF` and `OF`).
-- **Load-Use Penalty:** 1 stall cycle.
-
-### B. 6-Stage Pipeline (`[IF] -> [OF] -> [EX] -> [MEMCHK] -> [MA] -> [RW]`)
-Designed for higher clock frequencies and isolated hardware memory safety:
-1. **Fetch (`IF`):** Reads instruction at `PC`; increments `PC + 4`.
-2. **Decode (`OF`):** Decodes instruction and retrieves operands from register file.
-3. **Execute (`EX`):** ALU and FPU arithmetic; branch target evaluation.
-4. **Memory Check (`MEMCHK`):** Dedicated hardware stage validating effective memory address, stack limits, and word alignment before bus strobes fire.
-5. **Memory Access (`MA`):** Executes verified memory read or write.
-6. **Register Writeback (`RW`):** Commits result to destination register.
-
-- **Branch Penalty:** 2 cycles.
-- **Load-Use Penalty:** 2 stall cycles.
-
----
-
-## 4. Editable Architecture Diagram (Draw.io)
-
-The complete vector block diagram for the 4-stage and 6-stage datapaths is available in:
-- **File:** [`docs/diagrams/pipeline_datapath.drawio`](./diagrams/pipeline_datapath.drawio)
-- **How to edit:** Open this file directly in VS Code (using the *Draw.io Integration* extension) or via [app.diagrams.net](https://app.diagrams.net). You can drag boxes, adjust signal names, and export cleanly to PNG or SVG without broken fonts or clipped text.
+### 2. 6-Stage Datapath (`[IF] -> [OF] -> [EX] -> [MEMCHK] -> [MA] -> [RW]`)
+Designed for higher operating clock frequencies and hardware-isolated memory safety:
+- **Fetch (`IF`):** Instruction memory read and `PC` increment.
+- **Decode (`OF`):** Instruction decode, micro-sequencer dispatch, and register read.
+- **Execute (`EX`):** ALU and FPU execution; branch condition resolution; effective memory address calculation.
+- **Memory Check (`MEMCHK`):** Dedicated hardware firewall stage validating the effective address against `StackGuard` bounds, alignment rules (`addr % 4 == 0`), and segment permissions *before* memory bus strobes are asserted.
+- **Memory Access (`MA`):** Physical data memory read or write strobe assertion.
+- **Register Writeback (`RW`):** Commits loaded memory data or arithmetic results to the destination register file (`GPR` or `FPR`).
+- **Hazard Characteristics:**
+  - **Branch Penalty:** 2 cycles.
+  - **Load-Use Stall:** 2 bubble cycles (memory access occurs in Stage 5 `MA`; loaded data is forwarded from `MA/RW` directly to `EX`).
 
 ---
 
-## 5. Microprogrammed Control Unit
+## 4. Microprogrammed Control Unit
 
-Rather than complex hardwired decoding logic, control signals are stored in Control Memory ROM tables. The Control Unit supports two encoding schemes that achieve identical execution cycles and retirement parity.
+Rather than complex, inflexible hardwired random logic, the RISC201 utilizes a **Microprogrammed Control Unit** where control signals are stored in Control Memory ROM tables. The processor supports two distinct control store architectures that achieve identical cycle-by-cycle execution parity:
+
+```mermaid
+flowchart TD
+    subgraph ControlStoreSubsystem [" Control Store Architecture "]
+        OP["Instruction Opcode [31:26]"] --> DEC_SEL{"Encoding Mode"}
+        
+        DEC_SEL -->|"Horizontal (48-bit)"| H_ROM["Horizontal ROM<br/>128 x 48 bits"]
+        H_ROM -->|"Direct Uncompressed Signals"| SIGS["Pipeline Control Bundle<br/>(EX, CHK, MA, WB Signals)"]
+        
+        DEC_SEL -->|"Vertical (24-bit)"| V_ROM["Vertical ROM<br/>128 x 24 bits"]
+        V_ROM -->|"Packed Bitfields"| V_DEC["Combinational Micro-Decoder<br/>(Class & Sub-Op Expand)"]
+        V_DEC -->|"100% Identical Decoded Bundle"| SIGS
+    end
+```
 
 ### A. 48-bit Horizontal Control ROM
-Directly sets all control lines with zero combinational decoding delay:
-- Uncompressed bitfields route directly to ALU operand muxes, memory strobes, branch logic, and writeback targets.
-- 128 words deep, 48 bits wide.
+Directly sets all datapath control lines with zero combinational decoding delay:
+- Uncompressed bitfields route directly to ALU input muxes, FPU controllers, memory strobes, branch logic, and writeback targets.
+- Organization: 128 words deep, 48 bits wide.
+- Zero decode latency: signals are immediately available upon ROM access.
 
 ### B. 24-bit Vertical Control ROM
-Compresses control information into packed functional fields:
-- `op_class` (3 bits): ALU, FPU, Memory, Branch, System, Flow.
-- `sub_op` (4 bits): Operation code within the selected class.
-- `operand_mode` (3 bits): Source operand selection.
-- `mem_action` (2 bits): None, Read, Write, CheckOnly.
-- `wb_target` (3 bits): None, ALU, Memory, PC+4, FPU.
-- A small combinational micro-decoder circuit unpacks the 24-bit word into the full pipeline control signals with negligible logic delay (~1 ns).
-- **Result:** Cuts control store ROM storage area by **50%** while maintaining 100% cycle parity with the horizontal model.
-
-### C. Micro-Sequencer & Multi-Cycle Operations
-While standard instructions (`ADD`, `SUB`, `LD`, `ST`, branches) execute as single-cycle operations, complex instructions (`CALL`, `RET`, `BNDCHK`) require multi-step sequences:
-1. When a multi-step instruction is decoded in `OF`, the `MicroSequencer` asserts `freeze_if_of = true`.
-2. The `PC` and `IF/OF` pipeline registers hold their values while the sequencer injects atomic micro-operations into `OF/EX`:
-   - **`CALL` step 0:** Bounds check and decrement stack pointer (`sp = sp - 4`).
-   - **`CALL` step 1:** Store return address to memory (`Mem[sp] = PC + 4`), set `PC = target`.
-   - **`RET` step 0:** Read return address from stack (`ra = Mem[sp]`).
-   - **`RET` step 1:** Increment stack pointer (`sp = sp + 4`), update `PC = ra`.
-3. When `is_last_uop = true`, `freeze_if_of` is deasserted and normal pipeline flow resumes.
+Compresses control signals into functional bitfields, decoded by a fast combinational micro-decoder:
+- Organization: 128 words deep, 24 bits wide (**50% silicon ROM area reduction**).
+- Bitfield structure:
+  - `op_class` (3 bits): Major instruction class (ALU, FPU, Memory, Branch, System, Flow).
+  - `sub_op` (4 bits): Specific operation within class.
+  - `operand_mode` (3 bits): Source operand multiplexer routing.
+  - `mem_action` (2 bits): None, Read, Write, CheckOnly.
+  - `wb_target` (3 bits): None, ALU, Memory, PC+4, FPU.
+  - `is_fpu_domain` (1 bit): Routes register write to FPR vs GPR.
+  - `set_flags` (1 bit): Enables status flag updates.
+  - `freeze_if_of` (1 bit): Front-end stall control for multi-uop sequences.
+  - `is_multi_uop` / `is_last_uop` (2 bits): Micro-sequencer bounds.
+  - `halt` (1 bit): Clock termination control.
+  - `next_uop_step` (3 bits): Sequencer micro-step index.
+- **Empirical Parity:** The vertical control store achieves **100% exact cycle-for-cycle parity** with the horizontal store across all benchmark programs.
 
 ---
 
-## 6. Control Word Bitfields
+## 5. Micro-Sequencer & Multi-Cycle Micro-Operations
+
+While typical RISC instructions (`ADD`, `SUB`, `AND`, `LD`, `ST`, branches) execute as single-cycle operations, complex instructions (`CALL`, `RET`, `BNDCHK`) require multi-step microcode routines:
+
+1. When a multi-step instruction is decoded in `OF`, the `MicroSequencer` asserts `freeze_if_of = true`.
+2. The `PC` and `IF/OF` pipeline registers hold their values while the sequencer injects atomic micro-operations into `OF/EX`:
+   - **`CALL` step 0:** Bounds check stack limits; decrement stack pointer (`sp = sp - 4`).
+   - **`CALL` step 1:** Store return address to memory (`Mem[sp] = PC + 4`), mirror `PC + 4` to shadow return stack, and redirect `PC = target`.
+   - **`RET` step 0:** Read return address from stack (`ra = Mem[sp]`), pop and verify against shadow return stack.
+   - **`RET` step 1:** Increment stack pointer (`sp = sp + 4`), redirect `PC = ra`.
+3. When `is_last_uop = true`, `freeze_if_of` is deasserted and normal pipelined instruction flow resumes.
+
+---
+
+## 6. Control Word Bitfield Layouts
 
 ### 48-bit Horizontal Word Layout
 ```
@@ -169,19 +227,33 @@ Bit Range | Field Name     | Function / Encoding
 
 ---
 
-## 7. Hardware Subsystems
+## 7. Execution Units & Subsystems
 
-### Integer ALU (`alu/ALU.cpp`)
-- **Arithmetic:** 32-bit Kogge-Stone parallel prefix adder (`ADD`, `SUB`), Radix-4 Booth multiplier (`MUL`), non-restoring divider (`DIV`, `MOD`).
+### 1. Integer ALU (`alu/ALU.cpp`)
+- **Arithmetic:** 32-bit Kogge-Stone parallel prefix adder (`ADD`, `SUB`) for fast carry propagation; Radix-4 Booth multiplier (`MUL`) for signed multiplication; non-restoring divider (`DIV`, `MOD`).
 - **Logic:** Bitwise `AND`, `OR`, `XOR`, `NOT`.
-- **Shifts:** Logical shift left (`LSL`), logical shift right (`LSR`), arithmetic shift right (`ASR`).
-- **Flags:** Updates `Z` (result == 0), `N` (result < 0), `C` (unsigned carry/borrow), and `V` (signed overflow).
+- **Barrel Shifter:** Logical Shift Left (`LSL`), Logical Shift Right (`LSR`), Arithmetic Shift Right (`ASR` preserving sign bit).
+- **Flag Evaluator:** Evaluates Zero (`Z`), Negative (`N`), Carry (`C`), and Overflow (`V`) according to two's complement rules.
 
-### Floating-Point Unit (`fpu/fpu.cpp`)
-- **Format:** IEEE-754 single-precision (1 sign bit, 8 exponent bits with bias 127, 23 mantissa bits with implicit leading 1).
-- **Operations:** `FADD`, `FSUB` (mantissa alignment, addition/subtraction, normalization), `FMUL` (64-bit Booth mantissa multiplier), `FDIV` (non-restoring divider), `FCMP` (float compare setting condition flags), `FMOV` (float register transfer).
+### 2. Floating-Point Unit (FPU) (`fpu/fpu.cpp`)
+- **Format:** Standard IEEE-754 single-precision (1-bit sign, 8-bit exponent with bias 127, 23-bit mantissa with implicit leading 1).
+- **Operations:**
+  - `FADD`, `FSUB`: Exponent difference alignment, mantissa addition/subtraction, leading-zero normalization, and round-to-nearest-even.
+  - `FMUL`: Exponent addition with bias subtraction, 24x24-bit mantissa multiplication, normalization.
+  - `FDIV`: Exponent subtraction with bias addition, 24-bit mantissa division.
+  - `FCMP`: Floating-point comparison setting condition flags `Z` and `N`.
+  - `FMOV`: Fast FPR-to-FPR register move.
+  - `FLD`, `FST`: Memory load and store to/from `f0`–`f15`.
 
-### Memory Safety Subsystem (`memory_safety/stack_guard.cpp`)
-- **Stack Window:** `0x1F000` (limit) to `0x20000` (initial top, exclusive). Full-descending stack on `r14` (`sp`).
-- **Protection:** Prevents writes below active `sp`, detects stack overflow/underflow, and validates 4-byte alignment (`addr % 4 == 0`).
-- **Exceptions:** Triggers runtime exceptions before illegal bus transactions can commit to data memory.
+### 3. Memory Subsystem & StackGuard Firewall (`memory/`, `memory_safety/`)
+- **Capacity:** 128 KiB physical memory space (32,768 32-bit words).
+- **Alignment:** Strict 4-byte word alignment enforced on all memory accesses (`addr % 4 == 0`). Misaligned accesses raise an `ALIGNMENT_FAULT`.
+- **Memory Map:**
+  - `0x00000`–`0x0FFFF`: Code/Text segment (executable).
+  - `0x10000`–`0x1EFFF`: Global and heap data segment (read-write).
+  - `0x1F000`–`0x20000`: Bounded hardware stack window (4,096 bytes / 1,024 words).
+- **StackGuard Protection:** Hardware boundary validator monitoring `r14` (`sp`):
+  - Prevents stack overflow below `0x1F000` (`STACK_OVERFLOW`).
+  - Prevents stack underflow above `0x20000` (`STACK_UNDERFLOW`).
+  - Blocks illegal memory stores directed below the active stack pointer (`SEGMENTATION_FAULT`).
+- **Shadow Return Stack:** Dedicated hardware return stack mirroring return addresses on `CALL` and verifying return addresses on `RET`. Any return address overwrite raises a `SHADOW_STACK_MISMATCH` fault, preventing return-oriented attacks.

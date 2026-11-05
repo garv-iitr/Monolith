@@ -1,56 +1,52 @@
-# RISC201 Technical Documentation
+# RISC201 Microarchitectural Documentation
 
-Welcome to the engineering documentation for the **RISC201 Pipelined Microprocessor Project** (Course: CSC-201 Computer Organization & Architecture).
+This directory contains the engineering specifications, microarchitectural analysis, and operational manuals for the **RISC201 Pipelined Microprogrammed Processor**, developed for **CSC-201: Computer Organization & Architecture**.
 
 ---
 
-## 1. Documentation Index
+## Technical Documentation Sitemap
 
-| Document | Primary Owner | Scope & Content |
+| Document | Focus & Scope | Key Topics Covered |
 | :--- | :--- | :--- |
-| **[`architecture.md`](./architecture.md)** | **Garv** | **Hardware Architecture:** Datapath comparison (Single-Bus Sarangi 9.22 vs. Pipelined RISC201), 4-stage and 6-stage designs, 48-bit Horizontal vs. 24-bit Vertical Control ROMs, and micro-sequencer operations. |
-| **[`pipeline.md`](./pipeline.md)** | **Garv** | **Pipeline & Hazards:** Pipeline register latches (`IfOfLatch`, `OfExLatch`, `ExMaLatch`), RAW data forwarding logic, load-use stall interlocks, and branch flush handling. |
-| **[`diagrams/`](./diagrams/)** | **Team** | **Editable Architecture Diagrams:** Editable vector schematics in Draw.io format (`pipeline_datapath.drawio`) openable in VS Code and web browsers. |
-| **[`isa.md`](./isa.md)** | **Saatvik** | **Instruction Set Architecture:** 34 opcodes, instruction formats (F1–F8), register conventions, and stack preprocessor macro definitions. |
-| **[`memory_safety.md`](./memory_safety.md)** | **Paras** | **Memory Safety:** `StackGuard` bounds verification (`SP=r14`), alignment enforcement, shadow return stack, and exception framework. |
-| **[`tui.md`](./tui.md)** | **Aditya** | **Simulator CLI & TUI Guide:** Step-by-step CPU stepping, interactive FTXUI debugger, register/memory inspection, and reverse execution history. |
-| **[`plan.md`](./plan.md)** | **Team** | **Changelog & Requirements:** Development history, module division, and problem statement compliance checklist. |
-| **[`references/`](./references/)** | **Academic Archive** | Course problem statement (`problemStatement.md`) and textbook reference material (`mcu.pdf`, `pipeline.pdf`). |
+| **[`architecture.md`](./architecture.md)** | **Processor Hardware Specification** | Datapath comparison (Single-Bus Sarangi 9.22 vs. Pipelined RISC201), 4-stage and 6-stage designs, 48-bit Horizontal vs. 24-bit Vertical Control ROMs, micro-sequencer for multi-cycle instructions, ALU, and IEEE-754 FPU. |
+| **[`pipeline.md`](./pipeline.md)** | **Pipelining, Forwarding & Hazards** | Inter-stage latches (`IfOfLatch`, `OfExLatch`, `ExStageLatch`, `ChkMaLatch`, `MaRwLatch`), 3-level RAW data forwarding, load-use stall interlocks, speculative branch flush penalties, and micro-op streaming. |
+| **[`isa.md`](./isa.md)** | **Instruction Set Architecture (ISA)** | Canonical 34-opcode table, 8 instruction formats (F1–F8), condition flags (`Z`, `N`, `C`, `V`), register conventions (`r0`–`r15`, `f0`–`f15`), and full-descending stack macro expansion rules (`PUSH`, `POP`, `SPUSH`, `SPOP`). |
+| **[`memory_safety.md`](./memory_safety.md)** | **Memory Subsystem & StackGuard** | Physical memory map (128 KiB), hardware `StackGuard` bounds checking on `r14` (`sp`), dedicated `MEMCHK` firewall stage, shadow return stack protection, and runtime exception framework. |
+| **[`tui.md`](./tui.md)** | **Interactive Debugger & FTXUI TUI** | Real-time terminal debugger manual, live stage latch visualization, register file inspector (GPRs & FPRs), memory/stack hex dumper, forward/backward stepping (`s`, `u`), and breakpoint management. |
+| **[`plan.md`](./plan.md)** | **Development Log & Evolutionary History** | Chronicled microarchitectural evolution, why the single-bus datapath and modular assembler were archived in `legacy/`, design trade-offs, and requirement verification matrix. |
+| **[`diagrams/`](./diagrams/)** | **Editable Datapath Diagrams** | Vector block diagram in Draw.io format (`pipeline_datapath.drawio`) detailing datapath stages, control buses, forwarding paths, and latch boundaries. |
+| **[`references/`](./references/)** | **Academic Problem Statement & Theory** | Original course problem statement ([`problemStatement.md`](./references/problemStatement.md)) and reference textbook excerpts on microprogrammed control units and pipelining. |
 
 ---
 
-## 2. Directory Structure
+## Architectural Summary: The Evolutionary Milestone
 
-```
-Monolith/
-├── control_unit/           # Microcode ROMs, Sequencer, Pipeline Datapath & Bundles
-├── simulator_core/         # CPU Step Loop, Memory & RegFile, FTXUI Terminal UI
-├── alu/ & fpu/             # Kogge-Stone Adder, Booth Multiplier, Divider, IEEE-754 FPU
-├── memory_safety/          # Hardware StackGuard, Memory Firewall, Stack Visualizer
-├── assembler_disassembler/ # Standalone Assembler (risc201asm) & Disassembler (risc201dis)
-├── isa_spec/               # Canonical ISA definitions & opcode mappings
-├── legacy/                 # Reference baseline single-bus models & assembler library
-├── tests/                  # Cycle-accurate benchmarks, unit tests, and safety matrix
-└── docs/                   # Engineering documentation & editable diagrams
-```
+The RISC201 processor codebase reflects a complete microarchitectural evolution:
+
+1. **Initial Milestone (Single-Bus Serial Architecture):**  
+   The project began with a textbook single-bus microprogrammed datapath (`legacy/datapath/datapath.cpp`), where all registers communicated across a single shared 32-bit bus. Because all data transfers were serialized, each instruction required 10+ clock cycles (CPI ~ 10.0). In tandem, a complex modular assembler library (`legacy/assembler/`) was constructed.
+2. **Production Milestone (Pipelined Processor):**  
+   To fulfill the course requirements for high-performance 4-stage and 6-stage pipelining with hazard resolution, forwarding, and branch speculative flushes, the team engineered [`control_unit/pipeline_processor`](file:///e:/CSC-201/Monolith/control_unit/pipeline_processor.h). Instruction execution was parallelized with dedicated synchronous latches, dropping the CPI to **1.35–2.17** and delivering a **4.8x to 7.3x speedup**.
+3. **Toolchain Streamlining:**  
+   The modular assembler was superseded by the standalone two-pass tool [`assembler_disassembler/asm.cpp`](file:///e:/CSC-201/Monolith/assembler_disassembler/asm.cpp), which eliminated in-process library complexity and provided direct CLI assembly to word-aligned hex images.
+4. **Archival Retention in `legacy/`:**  
+   The single-bus datapath and the modular assembler library were preserved in [`legacy/`](file:///e:/CSC-201/Monolith/legacy) to maintain an authentic baseline for empirical cycle-count benchmarks and to provide a complete archival record of the engineering trade-offs made during development.
 
 ---
 
-## 3. Quickstart (GCC / MinGW)
+## Build & Test Quick Reference
 
 ```powershell
-# 1. Configure CMake with MinGW Makefiles
+# Build all targets with MinGW Makefiles
 cmake -B build -G "MinGW Makefiles"
-
-# 2. Compile all targets
 cmake --build build
 
-# 3. Run all tests (58/58 tests)
-.\build\risc201-tests.exe
-
-# 4. Run CTest harnesses
+# Run automated CTest test harness (12/12 passing)
 ctest --test-dir build --output-on-failure
 
-# 5. Launch the FTXUI Terminal Debugger
+# Run full unit test and hardware safety regression suite
+.\build\risc201-tests.exe
+
+# Launch the interactive FTXUI Terminal User Interface
 .\build\risc201-sim.exe --tui
 ```
