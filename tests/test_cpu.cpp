@@ -275,7 +275,7 @@ RISC201_TEST(cpu_memory_safety_configuration_matrix) {
       {"6-stage vertical", risc201::cu::StageLayout::SIX_STAGE,
        risc201::ControlEncoding::VERTICAL},
   }};
-  const std::array<const char*, 17> scenarios = {{
+  const std::array<const char*, 20> scenarios = {{
       "CALL/RET round-trip", "CALL stack overflow", "empty RET underflow",
       "valid data store/load", "stack store below SP",
       "misaligned stack load",
@@ -284,6 +284,7 @@ RISC201_TEST(cpu_memory_safety_configuration_matrix) {
       "FP load bad address", "FP load misaligned",
       "FP store bad address", "FP store misaligned",
       "corrupted return address", "nested CALL/RET", "unmatched RET",
+      "BNDCHK valid address", "BNDCHK bad address", "BNDCHK misaligned",
   }};
 
   std::size_t passed = 0;
@@ -472,6 +473,24 @@ RISC201_TEST(cpu_memory_safety_configuration_matrix) {
                cpu.fault_code() == ExceptionCode::SHADOW_STACK_MISMATCH &&
                cpu.fault_address() == return_slot &&
                cpu.read_reg(REG_SP) == return_slot;
+          break;
+        }
+        case 17:
+        case 18:
+        case 19: {
+          const Word address = scenario == 17 ? 0x10000
+                               : scenario == 18 ? 0x0FFC
+                                                : 0x10001;
+          cpu.write_reg(1, address);
+          cpu.load({enc_mem(Opcode::BNDCHK, 0, 1, 0), enc_halt()});
+          cpu.run();
+          const ExceptionCode expected =
+              scenario == 17 ? ExceptionCode::NONE
+              : scenario == 18 ? ExceptionCode::BAD_MEM_ACCESS
+                               : ExceptionCode::MISALIGNED_ACCESS;
+          ok = cpu.halted() && cpu.fault_code() == expected;
+          if (expected != ExceptionCode::NONE)
+            ok = ok && cpu.fault_address() == address;
           break;
         }
       }
