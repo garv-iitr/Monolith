@@ -69,7 +69,7 @@ Data, decoded control bundles, and status flags are transferred between adjacent
    - `rs1_is_fpu`, `rs2_is_fpu`, `dest_is_fpu`: Domain flags ensuring integer and floating-point registers do not collide.
    - `rs1_val`, `rs2_val`: Operand values retrieved from the register file or forwarded.
    - `imm32`: Decoded, sign-extended, or high-shifted 32-bit immediate operand.
-   - `branch_target`: PC-relative target address computed during decode (`pc + (imm << 2)`).
+   - `branch_target`: PC-relative target address computed during decode (`(pc + 4) + (offset26 * 4)`).
    - `control`: Decoded [`PipelineControlBundle`](file:///e:/CSC-201/Monolith/control_unit/pipeline_bundles.h#L52) containing stage-decoupled sub-bundles:
      - `ExControl`: ALU/FPU operation code, operand multiplexer selectors, condition flag update enable, branch condition.
      - `ChkControl`: Memory firewall check mode and bounds assertion enable.

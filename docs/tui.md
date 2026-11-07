@@ -141,7 +141,8 @@ For automated batch testing or environments without interactive terminal support
 
 ```powershell
 # Run headless simulation of a program
-.\build\risc201-sim.exe --headless tests\programs\fib.asm
+.\build\risc201asm.exe tests\programs\fib.asm fib.hex --hex
+.\build\risc201-sim.exe --headless fib.hex
 ```
 
 ### Supported CLI Commands

@@ -219,6 +219,8 @@ int main(int argc, char* argv[]) {
   risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE;
   risc201::ControlEncoding encoding = risc201::ControlEncoding::HORIZONTAL;
   bool use_tui = false;
+  std::string program_path;
+  std::string data_path;
 
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
@@ -256,6 +258,15 @@ int main(int argc, char* argv[]) {
         std::printf("Invalid encoding '%s' (expected horizontal or vertical)\n", value.c_str());
         return 1;
       }
+    } else if (!arg.empty() && arg[0] != '-') {
+      if (program_path.empty()) {
+        program_path = arg;
+      } else if (data_path.empty()) {
+        data_path = arg;
+      } else {
+        std::printf("Unexpected positional argument: %s\n", arg.c_str());
+        return 1;
+      }
     } else {
       std::printf("Unknown or incomplete option: %s\nUse --help for usage.\n", arg.c_str());
       return 1;
@@ -263,6 +274,27 @@ int main(int argc, char* argv[]) {
   }
 
   risc201::Debugger dbg(kMemWords, layout, encoding);
+
+  if (!program_path.empty()) {
+    std::vector<Word> code;
+    if (!load_hex_file(program_path, code)) {
+      std::printf("Failed to load program '%s'\n", program_path.c_str());
+      return 1;
+    }
+    dbg.load(kTextBase, code);
+    std::printf("Loaded %zu text word(s) from '%s' at 0x%X\n", code.size(),
+                program_path.c_str(), static_cast<unsigned>(kTextBase));
+    if (!data_path.empty()) {
+      std::vector<Word> data;
+      if (!load_hex_file(data_path, data)) {
+        std::printf("Failed to load data '%s'\n", data_path.c_str());
+        return 1;
+      }
+      dbg.load(kDataBase, data);
+      std::printf("Loaded %zu data word(s) from '%s' at 0x%X\n", data.size(),
+                  data_path.c_str(), static_cast<unsigned>(kDataBase));
+    }
+  }
 
   if (use_tui) {
 #ifdef RISC201_HAS_TUI

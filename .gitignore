@@ -1,19 +1,31 @@
+# Build Artifacts & Intermediate Directories
 /build/
 build*/
 *.o
 *.obj
 *.a
 *.so
+*.dylib
 *.exe
-.cache/
+*.locked
+*.old
+*.tmp
+*.bak
 compile_commands.json
-.commandcode
+
+# Toolchain Test Outputs & Logs
+*.err
+*.hex.err
+
+# IDE, Editor & Workspace State
+.cache/
+.commandcode/
 .vscode/
 .agents/
-*.o
+.idea/
+
+# Standalone Test Binaries
 test_sg
 demo_viz
 risc201asm
 risc201dis
-*.err
-*.hex

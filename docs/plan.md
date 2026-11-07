@@ -94,8 +94,8 @@ The table below cross-references every requirement from the official course prob
 
 ## 4. Test Suite Summary
 
-- **Automated CTest Suites (12/12 Passing):**
-  - `risc201-tests`: Core regression test binary.
+- **Automated CTest Suites (22/22 Passing):**
+  - `risc201-tests`: Core regression test binary (62 unit tests + 80 safety matrix permutations).
   - `stack-guard-test`: Standalone StackGuard bounds verification.
   - `memory-unit-test`: Physical MemoryUnit read/write and alignment testing.
   - `stack-visualizer-test`: ASCII stack frame rendering validation.
@@ -103,6 +103,11 @@ The table below cross-references every requirement from the official course prob
   - `toolchain-asm-fac` & `toolchain-dis-fac`: Standalone assembly & disassembly of `fac.asm`.
   - `toolchain-asm-matmul` & `toolchain-dis-matmul`: Standalone assembly & disassembly of `matmul.asm`.
   - `toolchain-asm-sort` & `toolchain-dis-sort`: Standalone assembly & disassembly of `sort.asm`.
+  - `toolchain-asm-all-34` & `toolchain-dis-all-34`: Standalone assembly & disassembly of `all_34_opcodes.asm`.
+  - `toolchain-asm-alu-ops` & `toolchain-dis-alu-ops`: Standalone assembly & disassembly of `alu_ops.asm`.
+  - `toolchain-asm-control-flow` & `toolchain-dis-control-flow`: Standalone assembly & disassembly of `control_flow.asm`.
+  - `toolchain-asm-fpu-ops` & `toolchain-dis-fpu-ops`: Standalone assembly & disassembly of `fpu_ops.asm`.
+  - `toolchain-asm-memory-ops` & `toolchain-dis-memory-ops`: Standalone assembly & disassembly of `memory_ops.asm`.
 - **Unit & Hardware Safety Matrix (`risc201-tests.exe`):**
-  - **48 Unit Tests Passing** covering pipeline forwarding, load-use interlocks, branch flushes, multi-uop execution, reverse step-back, and debugger commands.
+  - **62 Unit Tests Passing** covering ALU arithmetic, IEEE-754 FPU, pipeline forwarding, load-use interlocks, branch flushes, multi-uop execution, reverse step-back, and debugger commands.
   - **80/80 Hardware Safety Permutation Cases Passing** verifying memory protection across all 4 pipeline and control store combinations.
