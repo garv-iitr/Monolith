@@ -5,21 +5,45 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "isa_spec/isa.h"
 #include "simulator_core/core/cpu.h"
 #include "tests/test_framework.h"
 
 namespace {
 
+// locate the sibling assembler via our own path so the tests do not depend on the CWD
+std::string executable_dir() {
+#ifdef _WIN32
+  char buffer[MAX_PATH] = {0};
+  const DWORD written = GetModuleFileNameA(nullptr, buffer, MAX_PATH);
+  const std::string self(buffer, written > 0 ? static_cast<std::size_t>(written) : 0);
+#else
+  char buffer[4096] = {0};
+  const ssize_t written = ::readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
+  const std::string self(buffer, written > 0 ? static_cast<std::size_t>(written) : 0);
+#endif
+  const std::size_t slash = self.find_last_of("/\\");
+  return slash == std::string::npos ? std::string() : self.substr(0, slash + 1);
+}
+
 std::string find_risc201asm() {
-  std::ifstream f1("risc201asm.exe");
-  if (f1.is_open()) return "risc201asm.exe";
-  std::ifstream f2("build\\risc201asm.exe");
-  if (f2.is_open()) return "build\\risc201asm.exe";
-  std::ifstream f3("./risc201asm");
-  if (f3.is_open()) return "./risc201asm";
-  std::ifstream f4("./build/risc201asm");
-  if (f4.is_open()) return "./build/risc201asm";
+  const std::string here = executable_dir();
+  const std::vector<std::string> candidates = {
+      here + "risc201asm", here + "risc201asm.exe",
+      "risc201asm", "risc201asm.exe",
+      "build/risc201asm", "build/risc201asm.exe",
+      "build/Release/risc201asm.exe", "build/Debug/risc201asm.exe",
+  };
+  for (const auto& path : candidates) {
+    std::ifstream probe(path);
+    if (probe.good()) return path;
+  }
   return "risc201asm";
 }
 
@@ -39,7 +63,7 @@ std::vector<Word> run_risc201asm(const std::string& asm_code) {
   out.close();
 
   const std::string asm_bin = find_risc201asm();
-  const std::string cmd = asm_bin + " " + asm_path + " " + hex_path + " --hex";
+  const std::string cmd = "\"" + asm_bin + "\" \"" + asm_path + "\" \"" + hex_path + "\" --hex";
   const int ret = std::system(cmd.c_str());
   if (ret != 0) {
     std::remove(asm_path.c_str());
@@ -67,7 +91,7 @@ std::vector<Word> run_risc201asm(const std::string& asm_code) {
 std::vector<Word> assemble_file_to_words(const std::string& asm_filename, const std::string& hex_filename) {
   const std::string asm_path = find_program_asm(asm_filename);
   const std::string asm_bin = find_risc201asm();
-  const std::string cmd = asm_bin + " " + asm_path + " " + hex_filename + " --hex";
+  const std::string cmd = "\"" + asm_bin + "\" \"" + asm_path + "\" \"" + hex_filename + "\" --hex";
   const int ret = std::system(cmd.c_str());
   if (ret != 0) return {};
 
