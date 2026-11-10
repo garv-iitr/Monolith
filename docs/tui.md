@@ -104,8 +104,6 @@ The debugger features **reversible execution** powered by a bounded circular che
 
 - **Single Instruction Step (`s` or `Down` in Source):**  
   Advances the pipeline until the current instruction commits architectural state.
-- **Micro-Cycle Step (`m` or `Down` in Microinstructions):**  
-  Advances the clock by exactly one synchronous clock cycle, moving instructions across adjacent pipeline latches.
 - **Step Backward / Undo (`u` or `Up`):**  
   Restores the previous machine snapshot from the history buffer. GPRs, FPRs, condition flags, pipeline latches, memory writes, and shadow return stack entries are rolled back cleanly.
 - **Run to Breakpoint / Completion (`r`):**  
@@ -122,7 +120,6 @@ The debugger features **reversible execution** powered by a bounded circular che
 | **`o`** | Global | Open and assemble an assembly source file (`.asm`) |
 | **`s`** / **`Down`** | Source Pane | Step one instruction forward |
 | **`u`** / **`Up`** | Source Pane | Step one instruction backward (reverse execution) |
-| **`m`** | Micro Pane | Step one clock cycle forward |
 | **`r`** | Global | Run / pause execution |
 | **`b`** | Global | Toggle breakpoint at current PC |
 | **`x`** | Global | Reset CPU and reload program from entry point |
