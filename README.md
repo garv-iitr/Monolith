@@ -112,7 +112,7 @@ flowchart LR
 3. **Execution Simulator & Debugger (`risc201-sim`):**  
    Pipelined simulator engine with interactive CLI and FTXUI terminal user interface (`--tui`), displaying live stage latches (`IF/OF`, `OF/EX`, `EX/MA`, `MA/WB`), integer and floating-point registers, condition flags, active memory, and an ASCII stack visualizer. Supports forward stepping (`s`), micro-stepping (`mi`), and bounded reverse execution (`u`).
 4. **Automated Test Suite (`risc201-tests`):**  
-   48 unit tests and an 80-case hardware memory safety permutation matrix verifying pipeline forwarding, load-use interlocks, branch flushes, IEEE-754 arithmetic, StackGuard boundaries, and shadow call stack integrity.
+   62 unit tests and an 80-case hardware memory safety permutation matrix verifying pipeline forwarding, load-use interlocks, branch flushes, IEEE-754 arithmetic, StackGuard boundaries, and shadow call stack integrity.
 
 ---
 

@@ -88,11 +88,11 @@ The opcode is encoded in the upper 6 bits `[31:26]` of every 32-bit instruction 
 ### Class 0x3_: Floating-Point Unit (FPU) Operations
 | Mnemonic | Opcode (Hex) | Opcode (Bin) | Operation | Flag Updates | Description |
 | :--- | :---: | :---: | :--- | :---: | :--- |
-| **FADD** | `0x30` | `110000` | $F[fd] = F[fs1] + F[fs2]$ | `Z, N` | IEEE-754 single-precision float addition |
-| **FSUB** | `0x31` | `110001` | $F[fd] = F[fs1] - F[fs2]$ | `Z, N` | IEEE-754 single-precision float subtraction |
-| **FMUL** | `0x32` | `110010` | $F[fd] = F[fs1] \times F[fs2]$ | `Z, N` | IEEE-754 single-precision float multiplication |
-| **FDIV** | `0x33` | `110011` | $F[fd] = F[fs1] / F[fs2]$ | `Z, N` | IEEE-754 single-precision float division |
-| **FCMP** | `0x34` | `110100` | Discard $(F[fs1] - F[fs2])$ | `Z, N` | Float compare: updates condition flags |
+| **FADD** | `0x30` | `110000` | $F[fd] = F[fs1] + F[fs2]$ | FPU internal | IEEE-754 single-precision float addition |
+| **FSUB** | `0x31` | `110001` | $F[fd] = F[fs1] - F[fs2]$ | FPU internal | IEEE-754 single-precision float subtraction |
+| **FMUL** | `0x32` | `110010` | $F[fd] = F[fs1] \times F[fs2]$ | FPU internal | IEEE-754 single-precision float multiplication |
+| **FDIV** | `0x33` | `110011` | $F[fd] = F[fs1] / F[fs2]$ | FPU internal | IEEE-754 single-precision float division |
+| **FCMP** | `0x34` | `110100` | Discard $(F[fs1] - F[fs2])$ | `Z, N` (Committed) | Float compare: updates condition flags |
 | **FLD**  | `0x35` | `110101` | $F[fd] = \text{Mem}[R[rs1] + \text{imm16}]$ | None | Load 32-bit float from memory into FPR |
 | **FST**  | `0x36` | `110110` | $\text{Mem}[R[rs1] + \text{imm16}] = F[fd]$ | None | Store 32-bit float from FPR into memory |
 | **FMOV** | `0x37` | `110111` | $F[fd] = F[fs2]$ | None | Floating-point register-to-register move |

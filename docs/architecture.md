@@ -164,7 +164,7 @@ Compresses control signals into functional bitfields, decoded by a fast combinat
 
 ## 5. Micro-Sequencer & Multi-Cycle Micro-Operations
 
-While typical RISC instructions (`ADD`, `SUB`, `AND`, `LD`, `ST`, branches) execute as single-cycle operations, complex instructions (`CALL`, `RET`, `BNDCHK`) require multi-step microcode routines:
+While typical RISC instructions (`ADD`, `SUB`, `AND`, `LD`, `ST`, branches) execute as single-cycle operations, complex instructions (`CALL`, `RET`) require multi-step microcode routines:
 
 1. When a multi-step instruction is decoded in `OF`, the `MicroSequencer` asserts `freeze_if_of = true`.
 2. The `PC` and `IF/OF` pipeline registers hold their values while the sequencer injects atomic micro-operations into `OF/EX`:

@@ -213,7 +213,7 @@ flowchart TD
 
 ## 6. Micro-Sequencer Multi-uOp Injection
 
-Instructions requiring multiple atomic operations (`CALL`, `RET`, `BNDCHK`) do not stall the pipeline with complex structural conflicts. Instead, the `MicroSequencer` handles them cleanly:
+Instructions requiring multiple atomic operations (`CALL`, `RET`) do not stall the pipeline with complex structural conflicts. Instead, the `MicroSequencer` handles them cleanly:
 
 1. When a multi-uop instruction enters `OF`, the sequencer asserts `freeze_if_of = true`.
 2. The front-end (`PC` and `IF/OF`) freezes, preventing subsequent instructions from advancing.
