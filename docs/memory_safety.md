@@ -14,19 +14,19 @@ The RISC201 processor addresses a 128 KiB (131,072 bytes) physical address space
 graph TD
     subgraph MemoryMapLayout [" 128 KiB Physical Memory Map "]
         direction TB
-        TEXT["0x00000 - 0x0FFFF: Code / Text Segment (64 KiB)<br/>Read-only instruction cache, entry point at 0x00000"]
-        DATA["0x10000 - 0x1EFFF: Global / Heap Data Segment (60 KiB)<br/>Read-write variables, arrays, tables"]
+        RESERVED["0x00000 - 0x00FFF: Reserved Low Memory (4 KiB)<br/>Instruction fetch entry point at 0x00000; program text images"]
+        DATA["0x01000 - 0x1EFFF: Accessible Data Space (120 KiB)<br/>Global variables, heap, static data image base at 0x10000"]
         STACK["0x1F000 - 0x1FFFF: Guarded Stack Window (4 KiB / 1,024 Words)<br/>Full-descending stack, initial SP = 0x20000 (exclusive top)"]
     end
 ```
 
 ### Segmentation Rules
-1. **Text Segment (`0x00000` to `0x0FFFF`):**  
-   Contains assembled machine code. The instruction fetch (`IF`) stage reads instructions exclusively from this region. Data write strobes targeting this segment are blocked.
-2. **Data Segment (`0x10000` to `0x1EFFF`):**  
-   Contains program static data, string tables, and dynamic structures. Read-write access is permitted for general load and store instructions (`LD`, `ST`, `FLD`, `FST`).
+1. **Reserved Low Memory / Program Text (`0x00000` to `0x00FFF`):**  
+   Contains loaded program machine code and entry point. The instruction fetch (`IF`) stage fetches instructions starting at `0x00000`. Low memory below `0x01000` is reserved for instructions and protected from runtime data writes.
+2. **Accessible Data Region (`0x01000` to `0x1EFFF`):**  
+   General accessible data segment (120 KiB). Read-write access is permitted for general load and store instructions (`LD`, `ST`, `FLD`, `FST`). By convention, assembler and CLI programs load static data structures starting at `kDataBase = 0x10000`.
 3. **Guarded Stack Window (`0x1F000` to `0x20000`):**  
-   Dedicated hardware stack region. The stack grows downwards (full-descending) from the exclusive upper boundary `0x20000`. The first push writes to `0x1FFFC`. The lowest legal stack address is `0x1F000`.
+   Dedicated hardware stack region (4 KiB / 1,024 words). The stack grows downwards (full-descending) from the exclusive upper boundary `0x20000`. The first push writes to `0x1FFFC`. The lowest legal stack address is `0x1F000`.
 
 ---
 
@@ -36,29 +36,29 @@ graph TD
 flowchart TD
     ADDR["Memory Access Request<br/>(Effective Address = rs1 + imm16)"] --> ALIGN{"Word Aligned?<br/>(addr % 4 == 0)"}
     
-    ALIGN -->|"No"| FAULT_ALIGN["Raise ALIGNMENT_FAULT<br/>Suppress Memory Strobe"]
-    ALIGN -->|"Yes"| BOUNDS{"Address Within<br/>128 KiB Space?"}
+    ALIGN -->|"No"| FAULT_ALIGN["Raise MISALIGNED_ACCESS<br/>Suppress Memory Strobe"]
+    ALIGN -->|"Yes"| BOUNDS{"Address In Bounds?<br/>(0x01000 <= addr < 0x20000)"}
     
-    BOUNDS -->|"No"| FAULT_SEG["Raise SEGMENTATION_FAULT<br/>Suppress Memory Strobe"]
+    BOUNDS -->|"No"| FAULT_SEG["Raise BAD_MEM_ACCESS<br/>Suppress Memory Strobe"]
     BOUNDS -->|"Yes"| STK_CHK{"Is Access in Stack Window<br/>(0x1F000 - 0x20000)?"}
     
     STK_CHK -->|"No (Data Region)"| PASS["Authorize Data Memory Access"]
     STK_CHK -->|"Yes"| WRITE_BELOW{"Is Write Below Current SP?<br/>(addr < r14)"}
     
-    WRITE_BELOW -->|"Yes"| FAULT_SP["Raise SEGMENTATION_FAULT<br/>(Illegal Write Below Active SP)"]
+    WRITE_BELOW -->|"Yes"| FAULT_SP["Raise STACK_OVERFLOW<br/>(Illegal Write Below Active SP)"]
     WRITE_BELOW -->|"No"| PASS
 ```
 
 ### 1. Strict Word Alignment Enforcement
 All memory load and store instructions (`LD`, `ST`, `FLD`, `FST`) and stack preflight checks (`BNDCHK`) require physical addresses to be word-aligned:
 $$\text{addr} \pmod 4 == 0$$
-Any access with $\text{addr} \pmod 4 \neq 0$ immediately aborts before memory strobes fire, raising an `ALIGNMENT_FAULT` exception.
+Any access with $\text{addr} \pmod 4 \neq 0$ immediately aborts before memory strobes fire, raising a `MISALIGNED_ACCESS` exception.
 
 ### 2. Stack Boundary Protection (`StackGuard`)
 The [`StackGuard`](file:///e:/CSC-201/Monolith/memory_safety/stack_guard.h) hardware unit monitors `r14` (`sp`) and all memory addresses accessing the stack:
 - **Stack Overflow Detection:** If a push operation or stack pointer decrement moves `sp` below the floor `0x1F000`, execution halts immediately with a `STACK_OVERFLOW` exception.
 - **Stack Underflow Detection:** If a pop operation or stack pointer increment moves `sp` above the initial top `0x20000`, execution halts with a `STACK_UNDERFLOW` exception.
-- **Write-Below-SP Prevention:** Any memory write targeting an address in the stack range that is below the active stack pointer (`addr < sp`) is blocked with a `SEGMENTATION_FAULT`. This prevents "red-zone" stack corruption and dangling pointer clobbering.
+- **Write-Below-SP Prevention:** Any memory write targeting an address in the stack range that is below the active stack pointer (`addr < sp`) is blocked with a `STACK_OVERFLOW` exception. This prevents "red-zone" stack corruption and dangling pointer clobbering.
 
 ### 3. Dedicated `MEMCHK` Stage (6-Stage Pipeline)
 In the 6-stage pipeline, memory safety verification is decoupled into a dedicated hardware stage (`MEMCHK`, Stage 4) positioned between Execute (`EX`) and Memory Access (`MA`):
@@ -113,13 +113,13 @@ When a memory safety or microarchitectural violation occurs, the datapath assert
 | Exception Code | Value | Triggering Condition | Architectural Response |
 | :--- | :---: | :--- | :--- |
 | **`NONE`** | `0` | Normal execution | Pipeline continues |
-| **`INVALID_OPCODE`** | `1` | Instruction opcode $> 0x37$ or undefined | Pipeline halts; uncommitted latches flushed |
-| **`STACK_OVERFLOW`** | `2` | Stack pointer decremented below `0x1F000` | Write suppressed; CPU halts with fault address |
-| **`STACK_UNDERFLOW`** | `3` | Stack pointer incremented above `0x20000` | Pop suppressed; CPU halts with fault address |
-| **`SEGMENTATION_FAULT`**| `4` | Access beyond 128 KiB or store below active `sp` | Memory strobe aborted; CPU halts with fault address |
-| **`ALIGNMENT_FAULT`** | `5` | Memory access with $\text{addr} \pmod 4 \neq 0$ | Bus transaction aborted; CPU halts with fault address |
-| **`DIVISION_BY_ZERO`** | `6` | Integer `DIV` or `MOD` with divisor $= 0$ | ALU flags set; CPU halts |
-| **`SHADOW_STACK_MISMATCH`** | `7` | `RET` return PC differs from shadow stack | Control transfer aborted; CPU halts |
+| **`DIV_BY_ZERO`** | `1` | Integer `DIV` or `MOD` with divisor $= 0$ | ALU flags set; CPU halts |
+| **`BAD_MEM_ACCESS`** | `2` | Access outside valid data/stack bounds or below `0x01000` | Memory strobe aborted; CPU halts with fault address |
+| **`MISALIGNED_ACCESS`** | `3` | Memory access with $\text{addr} \pmod 4 \neq 0$ | Bus transaction aborted; CPU halts with fault address |
+| **`STACK_OVERFLOW`** | `4` | Stack pointer decremented below `0x1F000` or write below active `sp` | Write suppressed; CPU halts with fault address |
+| **`STACK_UNDERFLOW`** | `5` | Stack pointer incremented above `0x20000` | Pop suppressed; CPU halts with fault address |
+| **`SHADOW_STACK_MISMATCH`** | `6` | `RET` return PC differs from shadow stack | Control transfer aborted; CPU halts |
+| **`ILLEGAL_INSTRUCTION`** | `7` | Instruction opcode $> 0x37$ or undefined | Pipeline halts; uncommitted latches flushed |
 
 ---
 

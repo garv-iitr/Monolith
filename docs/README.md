@@ -14,7 +14,6 @@ This directory contains the engineering specifications, microarchitectural analy
 | **[`memory_safety.md`](./memory_safety.md)** | **Memory Subsystem & StackGuard** | Physical memory map (128 KiB), hardware `StackGuard` bounds checking on `r14` (`sp`), dedicated `MEMCHK` firewall stage, shadow return stack protection, and runtime exception framework. |
 | **[`tui.md`](./tui.md)** | **Interactive Debugger & FTXUI TUI** | Real-time terminal debugger manual, live stage latch visualization, register file inspector (GPRs & FPRs), memory/stack hex dumper, forward/backward stepping (`s`, `u`), and breakpoint management. |
 | **[`plan.md`](./plan.md)** | **Development Log & Evolutionary History** | Chronicled microarchitectural evolution, why the single-bus datapath and modular assembler were archived in `legacy/`, design trade-offs, and requirement verification matrix. |
-| **[`diagrams/`](./diagrams/)** | **Editable Datapath Diagrams** | Vector block diagram in Draw.io format (`pipeline_datapath.drawio`) detailing datapath stages, control buses, forwarding paths, and latch boundaries. |
 | **[`references/`](./references/)** | **Academic Problem Statement & Theory** | Original course problem statement ([`problemStatement.md`](./references/problemStatement.md)) and reference textbook excerpts on microprogrammed control units and pipelining. |
 
 ---
@@ -41,7 +40,7 @@ The RISC201 processor codebase reflects a complete microarchitectural evolution:
 cmake -B build -G "MinGW Makefiles"
 cmake --build build
 
-# Run automated CTest test harness (12/12 passing)
+# Run automated CTest test harness (22/22 passing)
 ctest --test-dir build --output-on-failure
 
 # Run full unit test and hardware safety regression suite

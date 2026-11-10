@@ -112,7 +112,7 @@ flowchart LR
 3. **Execution Simulator & Debugger (`risc201-sim`):**  
    Pipelined simulator engine with interactive CLI and FTXUI terminal user interface (`--tui`), displaying live stage latches (`IF/OF`, `OF/EX`, `EX/MA`, `MA/WB`), integer and floating-point registers, condition flags, active memory, and an ASCII stack visualizer. Supports forward stepping (`s`), micro-stepping (`mi`), and bounded reverse execution (`u`).
 4. **Automated Test Suite (`risc201-tests`):**  
-   48 unit tests and an 80-case hardware memory safety permutation matrix verifying pipeline forwarding, load-use interlocks, branch flushes, IEEE-754 arithmetic, StackGuard boundaries, and shadow call stack integrity.
+   62 unit tests and an 80-case hardware memory safety permutation matrix verifying pipeline forwarding, load-use interlocks, branch flushes, IEEE-754 arithmetic, StackGuard boundaries, and shadow call stack integrity.
 
 ---
 
@@ -162,7 +162,7 @@ cmake -B build -G "MinGW Makefiles"
 # 2. Compile simulator, assembler, disassembler, and test binaries
 cmake --build build
 
-# 3. Run automated CTest suite (12/12 passing)
+# 3. Run automated CTest suite (22/22 passing)
 ctest --test-dir build --output-on-failure
 
 # 4. Run full unit tests and memory safety verification matrix
@@ -231,5 +231,4 @@ Monolith/
 - **[`docs/isa.md`](./docs/isa.md):** Canonical 34-opcode table, instruction formats (F1–F8), condition flags, and stack macros.
 - **[`docs/memory_safety.md`](./docs/memory_safety.md):** Memory subsystem, StackGuard boundary rules, shadow return stack, and exception vectors.
 - **[`docs/tui.md`](./docs/tui.md):** Interactive FTXUI terminal user interface guide and hotkey reference.
-- **[`docs/plan.md`](./docs/plan.md):** Microarchitectural development log, design rationale, and evolutionary history.
-- **[`docs/diagrams/pipeline_datapath.drawio`](./docs/diagrams/pipeline_datapath.drawio):** Vector schematic openable in VS Code or [draw.io](https://app.diagrams.net).
+- **[`docs/plan.md`](./docs/plan.md):** Microarchitectural development log, design rationale, and evolutionary history.

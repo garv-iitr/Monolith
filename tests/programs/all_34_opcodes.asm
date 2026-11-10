@@ -48,7 +48,8 @@ step_blt:
     fsub f4, f1, f2
     fmul f5, f2, f1
     fdiv f6, f1, f2
-    fmov f7, f3
+    fmov  f7, f3
+    fst   f7, 28[r13]
     fcmp f1, f2
     bgt  step_fcmp
     b    trap_fail
