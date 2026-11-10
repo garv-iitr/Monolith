@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstring>
+#include <cstdlib>
 #include <fstream>
 #include <functional>
 #include <iomanip>
@@ -52,22 +52,48 @@ std::string hex_value(Word value) {
   return output.str();
 }
 
+// the assembler ships next to this binary, so resolve our own directory first
+std::string executable_dir() {
+#ifdef _WIN32
+  char buffer[MAX_PATH] = {0};
+  const DWORD written = GetModuleFileNameA(nullptr, buffer, MAX_PATH);
+  const std::string self(buffer, written > 0 ? static_cast<std::size_t>(written) : 0);
+#else
+  char buffer[4096] = {0};
+  const ssize_t written = ::readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
+  const std::string self(buffer, written > 0 ? static_cast<std::size_t>(written) : 0);
+#endif
+  const std::size_t slash = self.find_last_of("/\\");
+  return slash == std::string::npos ? std::string() : self.substr(0, slash + 1);
+}
+
 std::string find_risc201asm_bin() {
+  const std::string here = executable_dir();
   const std::vector<std::string> candidates = {
-      "build/risc201asm.exe",
-      "build/risc201asm",
-      "build/Release/risc201asm.exe",
-      "build/Debug/risc201asm.exe",
-      "../build/risc201asm.exe",
-      "../build/Release/risc201asm.exe",
-      "risc201asm.exe",
-      "risc201asm"
+      here + "risc201asm", here + "risc201asm.exe",
+      here + "../risc201asm", here + "../risc201asm.exe",
+      here + "Release/risc201asm.exe", here + "Debug/risc201asm.exe",
+      "build/risc201asm", "build/risc201asm.exe",
+      "build/Release/risc201asm.exe", "build/Debug/risc201asm.exe",
+      "../build/risc201asm", "../build/Release/risc201asm.exe",
+      "risc201asm", "risc201asm.exe",
   };
   for (const auto& path : candidates) {
-    std::ifstream f(path);
-    if (f.good()) return path;
+    std::ifstream probe(path);
+    if (probe.good()) return path;
   }
   return "risc201asm";
+}
+
+// quote for a POSIX shell; Windows keeps the cmd quoting it already had
+std::string shell_quote(const std::string& value) {
+  std::string out = "'";
+  for (char c : value) {
+    if (c == '\'') out += "'\\''";
+    else out += c;
+  }
+  out += '\'';
+  return out;
 }
 
 std::vector<SourceLine> source_lines(const std::string& source,
@@ -629,18 +655,22 @@ class SimulatorTui : public ComponentBase {
 
     if (path.size() >= 4 && path.substr(path.size() - 4) == ".asm") {
       hex_file = path.substr(0, path.size() - 4) + ".hex";
-      std::string asm_bin = find_risc201asm_bin();
-      std::string win_asm = asm_bin;
-      std::replace(win_asm.begin(), win_asm.end(), '/', '\\');
-      std::string win_path = path;
-      std::replace(win_path.begin(), win_path.end(), '/', '\\');
-      std::string win_hex = hex_file;
-      std::replace(win_hex.begin(), win_hex.end(), '/', '\\');
+      const std::string asm_bin = find_risc201asm_bin();
       const std::string err_file = hex_file + ".err";
-      std::string win_err = err_file;
-      std::replace(win_err.begin(), win_err.end(), '/', '\\');
 
-      std::string cmd = "\"\"" + win_asm + "\" \"" + win_path + "\" \"" + win_hex + "\" --hex > \"" + win_err + "\" 2>&1\"";
+      std::string cmd;
+#ifdef _WIN32
+      auto to_win = [](std::string value) {
+        std::replace(value.begin(), value.end(), '/', '\\');
+        return value;
+      };
+      cmd = "\"\"" + to_win(asm_bin) + "\" \"" + to_win(path) + "\" \"" +
+            to_win(hex_file) + "\" --hex > \"" + to_win(err_file) + "\" 2>&1\"";
+#else
+      cmd = shell_quote(asm_bin) + " " + shell_quote(path) + " " +
+            shell_quote(hex_file) + " --hex > " + shell_quote(err_file) + " 2>&1";
+#endif
+
       const int ret = std::system(cmd.c_str());
       if (ret != 0) {
         std::ifstream err_in(err_file);
