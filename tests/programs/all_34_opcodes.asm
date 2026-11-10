@@ -1,6 +1,5 @@
 main:
-    bndchk r0, 0x1000
-    mov  r13, 0x1000
+    mov  r13, 0x102C
     mov  r1, 42
     st   r1, 0[r13]
     ld   r2, 0[r13]
