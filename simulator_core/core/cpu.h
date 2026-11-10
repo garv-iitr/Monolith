@@ -95,59 +95,54 @@ class Cpu {
     return pipe_.stack_frame_boundaries();
   }
 
+  // Stack region as words, starting at kStackLimit (byte addresses stay in callers).
   std::vector<Word> stack_memory_snapshot() const {
     const std::vector<Word> memory = pipe_.mem().snapshot();
-    const std::size_t first_word = static_cast<std::size_t>(
+    const std::size_t first_index = static_cast<std::size_t>(
         risc201::safety::MemoryMap::kStackLimit /
         risc201::safety::MemoryMap::kWordBytes);
-    const std::size_t stack_words = static_cast<std::size_t>(
+    const std::size_t stack_entries = static_cast<std::size_t>(
         (risc201::safety::MemoryMap::kStackTop -
          risc201::safety::MemoryMap::kStackLimit) /
         risc201::safety::MemoryMap::kWordBytes);
-    std::vector<Word> stack(stack_words, 0);
-    if (first_word < memory.size()) {
+    std::vector<Word> stack(stack_entries, 0);
+    if (first_index < memory.size()) {
       const std::size_t available =
-          std::min(stack_words, memory.size() - first_word);
-      std::copy_n(memory.begin() + static_cast<std::ptrdiff_t>(first_word),
+          std::min(stack_entries, memory.size() - first_index);
+      std::copy_n(memory.begin() + static_cast<std::ptrdiff_t>(first_index),
                   available, stack.begin());
     }
     return stack;
   }
 
-  Word stack_pointer_word() const {
-    return read_reg(REG_SP) /
-           static_cast<Word>(risc201::safety::MemoryMap::kWordBytes);
-  }
+  // SP and every other address exposed here are byte addresses.
+  Word stack_pointer() const { return read_reg(REG_SP); }
 
   std::string render_stack_diff(const std::vector<Word>& before,
                                 Word before_sp) const {
-    const Word limit = static_cast<Word>(
-        risc201::safety::MemoryMap::kStackLimit /
-        risc201::safety::MemoryMap::kWordBytes);
-    const Word base = static_cast<Word>(
-        risc201::safety::MemoryMap::kStackTop /
-        risc201::safety::MemoryMap::kWordBytes);
-    const risc201::safety::StackVisualizer visualizer(base, limit);
+    const risc201::safety::StackVisualizer visualizer(
+        static_cast<Word>(risc201::safety::MemoryMap::kStackTop),
+        static_cast<Word>(risc201::safety::MemoryMap::kStackLimit));
     return visualizer.render_diff(before, stack_memory_snapshot(), before_sp,
-                                  stack_pointer_word(), limit);
+                                  stack_pointer(),
+                                  static_cast<Word>(
+                                      risc201::safety::MemoryMap::kStackLimit));
   }
 
   std::string render_stack(int window = 8) const {
-    const Word base = static_cast<Word>(
-        risc201::safety::MemoryMap::kStackTop /
-        risc201::safety::MemoryMap::kWordBytes);
-    const Word limit = static_cast<Word>(
-        risc201::safety::MemoryMap::kStackLimit /
-        risc201::safety::MemoryMap::kWordBytes);
-    const risc201::safety::StackVisualizer visualizer(base, limit);
-    std::vector<Word> frames;
-    frames.reserve(pipe_.stack_frame_boundaries().size());
-    for (Word boundary : pipe_.stack_frame_boundaries()) {
-      frames.push_back(
-          boundary / risc201::safety::MemoryMap::kWordBytes);
-    }
-    return visualizer.render(pipe_.mem().snapshot(), stack_pointer_word(), 0, window,
-                             frames);
+    const risc201::safety::StackVisualizer visualizer(
+        static_cast<Word>(risc201::safety::MemoryMap::kStackTop),
+        static_cast<Word>(risc201::safety::MemoryMap::kStackLimit));
+    return visualizer.render(pipe_.mem().snapshot(), stack_pointer(), 0, window,
+                             pipe_.stack_frame_boundaries());
+  }
+
+  risc201::safety::StackTable stack_table(int window = 8) const {
+    const risc201::safety::StackVisualizer visualizer(
+        static_cast<Word>(risc201::safety::MemoryMap::kStackTop),
+        static_cast<Word>(risc201::safety::MemoryMap::kStackLimit));
+    return visualizer.table(pipe_.mem().snapshot(), stack_pointer(), 0, window,
+                            pipe_.stack_frame_boundaries());
   }
 
   std::uint16_t micro_pc() const {
