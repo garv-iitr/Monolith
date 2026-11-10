@@ -25,11 +25,11 @@ The RISC201 processor codebase reflects a complete microarchitectural evolution:
 1. **Initial Milestone (Single-Bus Serial Architecture):**  
    The project began with a textbook single-bus microprogrammed datapath (`legacy/datapath/datapath.cpp`), where all registers communicated across a single shared 32-bit bus. Because all data transfers were serialized, each instruction required 10+ clock cycles (CPI ~ 10.0). In tandem, a complex modular assembler library (`legacy/assembler/`) was constructed.
 2. **Production Milestone (Pipelined Processor):**  
-   To fulfill the course requirements for high-performance 4-stage and 6-stage pipelining with hazard resolution, forwarding, and branch speculative flushes, the team engineered [`control_unit/pipeline_processor`](file:///e:/CSC-201/Monolith/control_unit/pipeline_processor.h). Instruction execution was parallelized with dedicated synchronous latches, dropping the CPI to **1.35–2.17** and delivering a **4.8x to 7.3x speedup**.
+   To fulfill the course requirements for high-performance 4-stage and 6-stage pipelining with hazard resolution, forwarding, and branch speculative flushes, the team engineered [`control_unit/pipeline_processor`](control_unit/pipeline_processor.h). Instruction execution was parallelized with dedicated synchronous latches, dropping the CPI to **1.35–2.17** and delivering a **4.8x to 7.3x speedup**.
 3. **Toolchain Streamlining:**  
-   The modular assembler was superseded by the standalone two-pass tool [`assembler_disassembler/asm.cpp`](file:///e:/CSC-201/Monolith/assembler_disassembler/asm.cpp), which eliminated in-process library complexity and provided direct CLI assembly to word-aligned hex images.
+   The modular assembler was superseded by the standalone two-pass tool [`assembler_disassembler/asm.cpp`](assembler_disassembler/asm.cpp), which eliminated in-process library complexity and provided direct CLI assembly to word-aligned hex images.
 4. **Archival Retention in `legacy/`:**  
-   The single-bus datapath and the modular assembler library were preserved in [`legacy/`](file:///e:/CSC-201/Monolith/legacy) to maintain an authentic baseline for empirical cycle-count benchmarks and to provide a complete archival record of the engineering trade-offs made during development.
+   The single-bus datapath and the modular assembler library were preserved in [`legacy/`](legacy) to maintain an authentic baseline for empirical cycle-count benchmarks and to provide a complete archival record of the engineering trade-offs made during development.
 
 ---
 

@@ -5,11 +5,52 @@
 #include <sstream>
 #include <cstdint>
 
+#include "memory_safety/memory_map.h"
+
 namespace risc201 {
 namespace safety {
 
 StackVisualizer::StackVisualizer(Word base, Word limit)
     : base_(base), limit_(limit) {}
+
+StackTable StackVisualizer::table(const std::vector<Word>& memory,
+                                  Word sp,
+                                  Word fp,
+                                  int window,
+                                  const std::vector<Word>& frame_boundaries) const {
+  StackTable out;
+  out.sp = sp;
+  out.base = base_;
+  out.limit = limit_;
+
+  if (window < 1) window = 1;
+  out.valid_sp = sp >= limit_ && sp <= base_;
+  out.empty = (sp == base_);
+  const std::int64_t center = out.valid_sp
+                                  ? static_cast<std::int64_t>(sp)
+                                  : static_cast<std::int64_t>(base_);
+  const std::int64_t step = static_cast<std::int64_t>(MemoryMap::kWordBytes);
+  const std::int64_t top = std::min<std::int64_t>(
+      static_cast<std::int64_t>(base_), center + (window / 2) * step);
+  const std::int64_t bot = std::max<std::int64_t>(
+      static_cast<std::int64_t>(limit_), center - (window / 2) * step);
+
+  for (std::int64_t a = top; a >= bot; a -= step) {
+    StackRow row;
+    row.address = static_cast<Word>(a);
+    const std::size_t index = static_cast<std::size_t>(a / step);
+    row.in_memory = index < memory.size();
+    row.value = row.in_memory ? memory[index] : Word{0};
+    row.is_sp = row.address == sp;
+    row.is_fp = row.address == fp && fp != 0;
+    row.is_frame = std::find(frame_boundaries.begin(), frame_boundaries.end(),
+                             row.address) != frame_boundaries.end();
+    row.is_limit = row.address == limit_;
+    row.is_base = row.address == base_;
+    out.rows.push_back(row);
+  }
+  return out;
+}
 
 std::string StackVisualizer::render(const std::vector<Word>& memory,
                                     Word sp,
@@ -17,56 +58,40 @@ std::string StackVisualizer::render(const std::vector<Word>& memory,
                                     int window,
                                     const std::vector<Word>& frame_boundaries) const {
   std::ostringstream os;
-
-  if (window < 1) window = 1;
-  const bool valid_sp = sp >= limit_ && sp <= base_;
-  const std::int64_t center = valid_sp
-                                  ? static_cast<std::int64_t>(sp)
-                                  : static_cast<std::int64_t>(base_);
-  int top = static_cast<int>(std::min<std::int64_t>(
-      static_cast<std::int64_t>(base_), center + (window / 2)));
-  int bot = static_cast<int>(std::max<std::int64_t>(
-      static_cast<std::int64_t>(limit_), center - (window / 2)));
+  const StackTable view = table(memory, sp, fp, window, frame_boundaries);
 
   std::vector<std::string> rows;
   std::ostringstream sp_line;
-  sp_line << "  SP word index: 0x" << std::hex << sp;
-  if (sp == base_) sp_line << " (exclusive top; empty stack)";
-  if (!valid_sp) sp_line << " (outside configured stack bounds)";
+  sp_line << "  SP address: 0x" << std::hex << view.sp;
+  if (view.empty) sp_line << " (exclusive top; empty stack)";
+  if (!view.valid_sp) sp_line << " (outside configured stack bounds)";
   rows.push_back(sp_line.str());
 
   std::ostringstream bounds_line;
-  bounds_line << "  bounds: LIMIT=0x" << std::hex << limit_ << " BASE=0x" << base_;
+  bounds_line << "  bounds: LIMIT=0x" << std::hex << view.limit
+              << " BASE=0x" << view.base;
   rows.push_back(bounds_line.str());
 
-  for (int a = top; a >= bot; --a) {
-    const bool is_memory_word =
-        a >= 0 && static_cast<std::size_t>(a) < memory.size();
-    const Word value =
-        is_memory_word ? memory[static_cast<std::size_t>(a)] : Word{0};
-
+  for (const StackRow& r : view.rows) {
     std::ostringstream row;
-    row << "  0x" << std::hex << std::setw(4) << std::setfill('0') << a
+    row << " 0x" << std::hex << std::setw(5) << std::setfill('0') << r.address
         << " | ";
-    if (is_memory_word) {
-      row << "0x" << std::setw(8) << value;
+    if (r.in_memory) {
+      row << "0x" << std::setw(8) << r.value;
     } else {
       row << "   <top>";
     }
     row << " |";
 
-    if (static_cast<Word>(a) == sp) row << "  <- SP / FRAME";
-    if (static_cast<Word>(a) == fp && fp != 0) row << "  <- FP";
-    if (std::find(frame_boundaries.begin(), frame_boundaries.end(),
-                  static_cast<Word>(a)) != frame_boundaries.end()) {
-      row << "  <- CALL FRAME";
-    }
-    if (static_cast<Word>(a) == limit_) row << "  <- LIMIT";
-    if (static_cast<Word>(a) == base_) row << "  <- BASE";
+    if (r.is_sp) row << "  <- SP / FRAME";
+    if (r.is_fp) row << "  <- FP";
+    if (r.is_frame) row << "  <- CALL FRAME";
+    if (r.is_limit) row << "  <- LIMIT";
+    if (r.is_base) row << "  <- BASE";
     rows.push_back(row.str());
   }
 
-  const std::string title = "STACK (word addresses)";
+  const std::string title = "STACK (byte addresses)";
   std::size_t width = title.size();
   for (const std::string& row : rows) width = std::max(width, row.size());
   const std::string border = "  +" + std::string(width + 2, '-') + "+\n";
@@ -82,17 +107,18 @@ std::string StackVisualizer::render_diff(const std::vector<Word>& before,
                                          const std::vector<Word>& after,
                                          Word before_sp,
                                          Word after_sp,
-                                         Word first_word) const {
+                                         Word first_address) const {
   std::ostringstream os;
   os << "[STACK DIFF]\n";
 
+  const Word step = static_cast<Word>(MemoryMap::kWordBytes);
   std::size_t n = std::min(before.size(), after.size());
   bool any = false;
   for (std::size_t i = 0; i < n; ++i) {
     if (before[i] != after[i]) {
       any = true;
-      os << "  word 0x" << std::hex << std::setw(4) << std::setfill('0')
-         << (first_word + static_cast<Word>(i))
+      os << "  addr 0x" << std::hex << std::setw(5) << std::setfill('0')
+         << (first_address + static_cast<Word>(i) * step)
          << " : 0x" << std::setw(8) << before[i]
          << " -> 0x" << std::setw(8) << after[i] << "\n";
     }

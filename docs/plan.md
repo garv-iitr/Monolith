@@ -10,11 +10,11 @@
 
 | Engineering Subsystem | Primary Owner | Production Directory | Key Modules & Implementation Responsibilities |
 | :--- | :--- | :--- | :--- |
-| **Control Unit & Pipeline** | **Garv (Lead)** | [`control_unit/`](file:///e:/CSC-201/Monolith/control_unit) | Synchronous 4-stage and 6-stage pipelined datapaths, dual control ROMs (48-bit Horizontal vs. 24-bit Vertical), micro-sequencer for multi-uop instructions, 3-level RAW data forwarding unit, load-use hazard interlocks, and branch speculative flushes. |
-| **Simulator Core & TUI** | **Aditya** | [`simulator_core/`](file:///e:/CSC-201/Monolith/simulator_core) | CPU step execution engine wrapping `PipelineProcessor`, interactive FTXUI full-screen terminal debugger, bounded ring-buffer reverse execution history, and memory inspection hooks. |
-| **Arithmetic & Floating-Point** | **Atharva** | [`alu/`](file:///e:/CSC-201/Monolith/alu), [`fpu/`](file:///e:/CSC-201/Monolith/fpu) | 32-bit integer ALU (Kogge-Stone parallel prefix adder, Radix-4 Booth multiplier, non-restoring divider), condition flag updates (`Z`, `N`, `C`, `V`), and IEEE-754 single-precision floating-point unit (`f0`–`f15`). |
-| **Memory Safety & Firewall** | **Paras** | [`memory_safety/`](file:///e:/CSC-201/Monolith/memory_safety), [`memory/`](file:///e:/CSC-201/Monolith/memory) | Physical `MemoryUnit`, hardware `StackGuard` bounds checking on `r14` (`sp`), dedicated `MEMCHK` firewall stage, shadow return stack protection against buffer overflows, and runtime exception framework. |
-| **Assembler & Toolchain** | **Saatvik** | [`assembler_disassembler/`](file:///e:/CSC-201/Monolith/assembler_disassembler) | Standalone two-pass assembler (`risc201asm`), standalone disassembler (`risc201dis`), symbol table resolution, segment directives, and full-descending stack macro expansions. |
+| **Control Unit & Pipeline** | **Garv (Lead)** | [`control_unit/`](control_unit) | Synchronous 4-stage and 6-stage pipelined datapaths, dual control ROMs (48-bit Horizontal vs. 24-bit Vertical), micro-sequencer for multi-uop instructions, 3-level RAW data forwarding unit, load-use hazard interlocks, and branch speculative flushes. |
+| **Simulator Core & TUI** | **Aditya** | [`simulator_core/`](simulator_core) | CPU step execution engine wrapping `PipelineProcessor`, interactive FTXUI full-screen terminal debugger, bounded ring-buffer reverse execution history, and memory inspection hooks. |
+| **Arithmetic & Floating-Point** | **Atharva** | [`alu/`](alu), [`fpu/`](fpu) | 32-bit integer ALU (Kogge-Stone parallel prefix adder, Radix-4 Booth multiplier, non-restoring divider), condition flag updates (`Z`, `N`, `C`, `V`), and IEEE-754 single-precision floating-point unit (`f0`–`f15`). |
+| **Memory Safety & Firewall** | **Paras** | [`memory_safety/`](memory_safety), [`memory/`](memory) | Physical `MemoryUnit`, hardware `StackGuard` bounds checking on `r14` (`sp`), dedicated `MEMCHK` firewall stage, shadow return stack protection against buffer overflows, and runtime exception framework. |
+| **Assembler & Toolchain** | **Saatvik** | [`assembler_disassembler/`](assembler_disassembler) | Standalone two-pass assembler (`risc201asm`), standalone disassembler (`risc201dis`), symbol table resolution, segment directives, and full-descending stack macro expansions. |
 
 ---
 
@@ -36,7 +36,7 @@ timeline
 - **Characteristics:** All internal registers (`PC`, `IR`, `MAR`, `MDR`, `A`, `B`, `aluResult`, and the register file) were wired to a single shared 32-bit internal bus.
 - **Outcome:** Every macro-instruction required 10+ clock cycles to serialize bus transfers (`PC -> MAR`, `MemRead`, `MDR -> IR`, `A <- rs1`, `B <- rs2`, `ALU -> aluResult`, `MDR -> RegFile`), resulting in a high average CPI of **9.8 to 10.4**.
 - **The Modular Assembler:** Concurrently, an over-engineered modular assembler library (`legacy/assembler/`) was constructed with sprawling class hierarchies (`Assembler`, `Disassembler`, `ISA`, `Formats`, `Macros`).
-- **Why Retain `legacy/`?** Rather than deleting these components when advancing to pipelining, the team preserved them under [`legacy/`](file:///e:/CSC-201/Monolith/legacy) to serve as an authentic baseline for comparative cycle benchmarks and to document the microarchitectural evolution of the processor.
+- **Why Retain `legacy/`?** Rather than deleting these components when advancing to pipelining, the team preserved them under [`legacy/`](legacy) to serve as an authentic baseline for comparative cycle benchmarks and to document the microarchitectural evolution of the processor.
 
 ### Phase 1: Dual Control Store ROMs
 - Replaced hardwired control logic with programmable Control Memory ROM tables:
@@ -49,12 +49,12 @@ timeline
   - **6-Stage Pipeline:** `[IF] -> [OF] -> [EX] -> [MEMCHK] -> [MA] -> [RW]` (Decoupled hardware memory firewall stage, 2-cycle load-use penalty).
 
 ### Phase 3: Hazard Resolution & Forwarding Network
-- Implemented [`ForwardingUnit`](file:///e:/CSC-201/Monolith/control_unit/hazard_unit.h#L26) to bypass fresh results from `EX/MA_RW`, `CHK/MA`, and `MA/RW` back to `EX` input muxes, resolving arithmetic RAW hazards with **0 stall cycles**.
-- Implemented [`HazardDetectionUnit`](file:///e:/CSC-201/Monolith/control_unit/hazard_unit.h#L86) to interlock the pipeline on load-use hazards, freezing the front-end and injecting bubble NOPs into `OF/EX` (1 bubble in 4-stage, 2 bubbles in 6-stage).
+- Implemented [`ForwardingUnit`](control_unit/hazard_unit.h#L26) to bypass fresh results from `EX/MA_RW`, `CHK/MA`, and `MA/RW` back to `EX` input muxes, resolving arithmetic RAW hazards with **0 stall cycles**.
+- Implemented [`HazardDetectionUnit`](control_unit/hazard_unit.h#L86) to interlock the pipeline on load-use hazards, freezing the front-end and injecting bubble NOPs into `OF/EX` (1 bubble in 4-stage, 2 bubbles in 6-stage).
 - Implemented speculative branch resolution: branches evaluate condition codes in `EX`; on branch taken, younger instructions in `IF/OF` and `OF/EX` are flushed, incurring a 2-cycle penalty.
 
 ### Phase 4: Hardware Memory Safety & Shadow Return Stack
-- Integrated [`StackGuard`](file:///e:/CSC-201/Monolith/memory_safety/stack_guard.h) to enforce a bounded 4 KiB stack window (`0x1F000`–`0x20000`, full-descending on `r14`/`sp`).
+- Integrated [`StackGuard`](memory_safety/stack_guard.h) to enforce a bounded 4 KiB stack window (`0x1F000`–`0x20000`, full-descending on `r14`/`sp`).
 - Added strict 4-byte word alignment checking (`addr % 4 == 0`) and blocked illegal writes directed below the active stack pointer.
 - Implemented an internal hardware **Shadow Return Stack** to mirror return addresses on `CALL` and verify them on `RET`, halting execution with `SHADOW_STACK_MISMATCH` if stack tampering is detected.
 - Evaluated and verified across an automated 80-case memory safety test matrix.
@@ -64,15 +64,15 @@ timeline
 - Integrated an IEEE-754 single-precision floating-point unit with 16 dedicated floating-point registers (`f0`–`f15`), maintaining clean architectural isolation between integer and floating-point register files.
 
 ### Phase 6: Toolchain Streamlining & Interactive FTXUI TUI
-- Replaced the overkill modular assembler with two clean, standalone CLI tools: [`assembler_disassembler/asm.cpp`](file:///e:/CSC-201/Monolith/assembler_disassembler/asm.cpp) (`risc201asm`) and [`assembler_disassembler/disasm.cpp`](file:///e:/CSC-201/Monolith/assembler_disassembler/disasm.cpp) (`risc201dis`).
-- Wired the production `PipelineProcessor` directly into the simulator core ([`simulator_core/core/cpu.h`](file:///e:/CSC-201/Monolith/simulator_core/core/cpu.h)).
+- Replaced the overkill modular assembler with two clean, standalone CLI tools: [`assembler_disassembler/asm.cpp`](assembler_disassembler/asm.cpp) (`risc201asm`) and [`assembler_disassembler/disasm.cpp`](assembler_disassembler/disasm.cpp) (`risc201dis`).
+- Wired the production `PipelineProcessor` directly into the simulator core ([`simulator_core/core/cpu.h`](simulator_core/core/cpu.h)).
 - Built the interactive FTXUI full-screen terminal debugger, displaying live stage latches, GPR and FPR register banks, active stack visualizer, and assembly source code with reverse execution history.
 
 ---
 
 ## 3. Course Requirements Compliance Matrix
 
-The table below cross-references every requirement from the official course problem statement ([`docs/references/problemStatement.md`](file:///e:/CSC-201/Monolith/docs/references/problemStatement.md)) against the verified codebase implementation:
+The table below cross-references every requirement from the official course problem statement ([`docs/references/problemStatement.md`](docs/references/problemStatement.md)) against the verified codebase implementation:
 
 | Requirement ID | Problem Statement Requirement | Implementation in RISC201 Codebase | Verification Status |
 | :---: | :--- | :--- | :---: |

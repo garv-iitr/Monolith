@@ -454,7 +454,7 @@ int main(int argc, char* argv[]) {
           int traced = 0;
           while (!dbg.cpu().halted() && traced < max_steps) {
             const Word before_pc = dbg.cpu().pc();
-            const Word before_sp = dbg.cpu().stack_pointer_word();
+            const Word before_sp = dbg.cpu().stack_pointer();
             const std::vector<Word> before_stack =
                 dbg.cpu().stack_memory_snapshot();
             dbg.step_instruction();

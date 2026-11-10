@@ -3,7 +3,7 @@
 **Course:** CSC-201 Computer Organization & Architecture  
 **Architecture:** 32-bit Fixed-Length Load-Store RISC  
 **Word Length:** 32 bits (4 bytes), byte-addressed, 4-byte word-aligned  
-**Source Implementation:** [`isa_spec/isa.h`](file:///e:/CSC-201/Monolith/isa_spec/isa.h), [`assembler_disassembler/asm.cpp`](file:///e:/CSC-201/Monolith/assembler_disassembler/asm.cpp), [`assembler_disassembler/disasm.cpp`](file:///e:/CSC-201/Monolith/assembler_disassembler/disasm.cpp)  
+**Source Implementation:** [`isa_spec/isa.h`](isa_spec/isa.h), [`assembler_disassembler/asm.cpp`](assembler_disassembler/asm.cpp), [`assembler_disassembler/disasm.cpp`](assembler_disassembler/disasm.cpp)  
 
 ---
 
