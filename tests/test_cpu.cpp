@@ -526,7 +526,7 @@ RISC201_TEST(cpu_stack_visualizer_tracks_call_frames) {
 RISC201_TEST(cpu_stack_snapshot_diff_tracks_call_and_return) {
   risc201::Cpu cpu;
   const auto empty_stack = cpu.stack_memory_snapshot();
-  const Word empty_sp = cpu.stack_pointer_word();
+  const Word empty_sp = cpu.stack_pointer();
   cpu.load({enc_branch(Opcode::CALL, 1), enc_halt(),
             enc_zero(Opcode::RET)});
 
@@ -536,11 +536,11 @@ RISC201_TEST(cpu_stack_snapshot_diff_tracks_call_and_return) {
   const std::string push_diff =
       cpu.render_stack_diff(empty_stack, empty_sp);
   CHECK(push_diff.find("(push)") != std::string::npos);
-  CHECK(push_diff.find("word 0x7fff") != std::string::npos);
+  CHECK(push_diff.find("addr 0x1fffc") != std::string::npos);
   CHECK(cpu.render_stack().find("CALL FRAME") != std::string::npos);
 
   const auto active_stack = cpu.stack_memory_snapshot();
-  const Word active_sp = cpu.stack_pointer_word();
+  const Word active_sp = cpu.stack_pointer();
   for (int i = 0; i < 100 && !cpu.stack_frame_boundaries().empty(); ++i) {
     cpu.step();
   }
