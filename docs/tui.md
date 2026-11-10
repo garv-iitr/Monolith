@@ -2,7 +2,7 @@
 
 **Course:** CSC-201 Computer Organization & Architecture  
 **Component:** Full-Screen FTXUI Terminal Debugger & CLI Execution Simulator  
-**Source Implementation:** [`simulator_core/ui/tui.cpp`](file:///e:/CSC-201/Monolith/simulator_core/ui/tui.cpp), [`simulator_core/ui/tui.h`](file:///e:/CSC-201/Monolith/simulator_core/ui/tui.h), [`simulator_core/core/debugger.h`](file:///e:/CSC-201/Monolith/simulator_core/core/debugger.h), [`simulator_core/core/cpu.h`](file:///e:/CSC-201/Monolith/simulator_core/core/cpu.h)  
+**Source Implementation:** [`simulator_core/ui/tui.cpp`](simulator_core/ui/tui.cpp), [`simulator_core/ui/tui.h`](simulator_core/ui/tui.h), [`simulator_core/core/debugger.h`](simulator_core/core/debugger.h), [`simulator_core/core/cpu.h`](simulator_core/core/cpu.h)  
 
 ---
 
@@ -84,7 +84,7 @@ When launched with `--tui`, the terminal screen is divided into specialized reac
 
 ## 3. Workflow: Opening & Assembling Programs
 
-The TUI incorporates direct integration with the standalone assembler [`risc201asm`](file:///e:/CSC-201/Monolith/assembler_disassembler/asm.cpp):
+The TUI incorporates direct integration with the standalone assembler [`risc201asm`](assembler_disassembler/asm.cpp):
 
 1. Press `o` while running the TUI.
 2. An interactive path input box opens. Enter the relative or absolute path to an assembly file (e.g. `tests/programs/fib.asm`) and press `Enter`.

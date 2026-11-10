@@ -87,9 +87,9 @@ At the same time, the team initially constructed an over-engineered modular asse
 
 ### 3. The Pipelined Pivot & Archival Retention
 To satisfy the course requirements for high-performance 4-stage and 6-stage pipelined execution with concurrent stage operation, data forwarding, and branch speculative flushes, the single-bus engine was retired:
-- The single-bus datapath was replaced by the high-throughput production engine [`control_unit/pipeline_processor`](file:///e:/CSC-201/Monolith/control_unit/pipeline_processor.h), featuring synchronous inter-stage latches, multi-level RAW forwarding, load-use hazard interlocks, and micro-op cracking.
-- The assembler was radically simplified into two standalone, ultra-fast CLI utilities: [`assembler_disassembler/asm.cpp`](file:///e:/CSC-201/Monolith/assembler_disassembler/asm.cpp) (`risc201asm`) and [`assembler_disassembler/disasm.cpp`](file:///e:/CSC-201/Monolith/assembler_disassembler/disasm.cpp) (`risc201dis`).
-- Rather than discarding the historical implementation, the team relocated the single-bus engine and modular assembler into [`legacy/`](file:///e:/CSC-201/Monolith/legacy) as an archival record. This serves two key purposes:
+- The single-bus datapath was replaced by the high-throughput production engine [`control_unit/pipeline_processor`](control_unit/pipeline_processor.h), featuring synchronous inter-stage latches, multi-level RAW forwarding, load-use hazard interlocks, and micro-op cracking.
+- The assembler was radically simplified into two standalone, ultra-fast CLI utilities: [`assembler_disassembler/asm.cpp`](assembler_disassembler/asm.cpp) (`risc201asm`) and [`assembler_disassembler/disasm.cpp`](assembler_disassembler/disasm.cpp) (`risc201dis`).
+- Rather than discarding the historical implementation, the team relocated the single-bus engine and modular assembler into [`legacy/`](legacy) as an archival record. This serves two key purposes:
   1. It provides a real, verifiable baseline to measure genuine pipeline speedups (4.8x to 7.3x) on identical benchmark programs.
   2. It documents the complete microarchitectural development journey from multi-cycle serial execution to a pipelined processor.
 

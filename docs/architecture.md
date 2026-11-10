@@ -64,7 +64,7 @@ In this single-bus model:
 - **Bottleneck:** Every instruction required 10 to 11 clock cycles. The average CPI across standard benchmarks was **9.8 to 10.4**, severely limiting throughput.
 
 ### B. The Production Synchronous Pipelined Architecture
-To satisfy the course requirement for high-performance pipelined processing, the team developed [`control_unit/pipeline_processor`](file:///e:/CSC-201/Monolith/control_unit/pipeline_processor.h). The shared bus was eliminated in favor of **dedicated, point-to-point inter-stage pipeline registers** (`IfOfLatch`, `OfExLatch`, `ExStageLatch`, `ChkMaLatch`, `MaRwLatch`). 
+To satisfy the course requirement for high-performance pipelined processing, the team developed [`control_unit/pipeline_processor`](control_unit/pipeline_processor.h). The shared bus was eliminated in favor of **dedicated, point-to-point inter-stage pipeline registers** (`IfOfLatch`, `OfExLatch`, `ExStageLatch`, `ChkMaLatch`, `MaRwLatch`). 
 
 By allowing multiple instructions to execute concurrently across different hardware stages, the processor starts a new instruction every clock cycle in the absence of hazards, achieving a sustained CPI of **1.35 to 2.17** and delivering a **4.8x to 7.3x speedup** over the single-bus baseline.
 

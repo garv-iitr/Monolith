@@ -2,7 +2,7 @@
 
 **Course:** CSC-201 Computer Organization & Architecture  
 **Subsystem:** Hardware Memory Protection, Stack Firewall & Shadow Return Stack  
-**Source Implementation:** [`memory_safety/stack_guard.h`](file:///e:/CSC-201/Monolith/memory_safety/stack_guard.h), [`memory_safety/stack_guard.cpp`](file:///e:/CSC-201/Monolith/memory_safety/stack_guard.cpp), [`memory/memory_unit.h`](file:///e:/CSC-201/Monolith/memory/memory_unit.h), [`simulator_core/core/exception.h`](file:///e:/CSC-201/Monolith/simulator_core/core/exception.h)  
+**Source Implementation:** [`memory_safety/stack_guard.h`](memory_safety/stack_guard.h), [`memory_safety/stack_guard.cpp`](memory_safety/stack_guard.cpp), [`memory/memory_unit.h`](memory/memory_unit.h), [`simulator_core/core/exception.h`](simulator_core/core/exception.h)  
 
 ---
 
@@ -55,7 +55,7 @@ $$\text{addr} \pmod 4 == 0$$
 Any access with $\text{addr} \pmod 4 \neq 0$ immediately aborts before memory strobes fire, raising an `ALIGNMENT_FAULT` exception.
 
 ### 2. Stack Boundary Protection (`StackGuard`)
-The [`StackGuard`](file:///e:/CSC-201/Monolith/memory_safety/stack_guard.h) hardware unit monitors `r14` (`sp`) and all memory addresses accessing the stack:
+The [`StackGuard`](memory_safety/stack_guard.h) hardware unit monitors `r14` (`sp`) and all memory addresses accessing the stack:
 - **Stack Overflow Detection:** If a push operation or stack pointer decrement moves `sp` below the floor `0x1F000`, execution halts immediately with a `STACK_OVERFLOW` exception.
 - **Stack Underflow Detection:** If a pop operation or stack pointer increment moves `sp` above the initial top `0x20000`, execution halts with a `STACK_UNDERFLOW` exception.
 - **Write-Below-SP Prevention:** Any memory write targeting an address in the stack range that is below the active stack pointer (`addr < sp`) is blocked with a `SEGMENTATION_FAULT`. This prevents "red-zone" stack corruption and dangling pointer clobbering.
@@ -125,7 +125,7 @@ When a memory safety or microarchitectural violation occurs, the datapath assert
 
 ## 5. Verification Matrix: 80/80 Permutation Coverage
 
-The memory safety architecture is verified through an automated 80-case regression matrix executed in [`tests/test_cpu.cpp`](file:///e:/CSC-201/Monolith/tests/test_cpu.cpp):
+The memory safety architecture is verified through an automated 80-case regression matrix executed in [`tests/test_cpu.cpp`](tests/test_cpu.cpp):
 - **20 Test Scenarios** evaluated across **4 Datapath Configurations** (4-Stage Horizontal, 4-Stage Vertical, 6-Stage Horizontal, 6-Stage Vertical):
   1. `CALL`/`RET` round-trip execution.
   2. `CALL` stack overflow detection (preflight check before SP modification).

@@ -2,13 +2,13 @@
 
 **Course:** CSC-201 Computer Organization & Architecture  
 **Module:** Datapath Pipelining, Hazard Detection & Multi-Level Forwarding  
-**Source Implementation:** [`control_unit/pipeline_processor.cpp`](file:///e:/CSC-201/Monolith/control_unit/pipeline_processor.cpp), [`control_unit/hazard_unit.h`](file:///e:/CSC-201/Monolith/control_unit/hazard_unit.h), [`control_unit/pipeline_bundles.h`](file:///e:/CSC-201/Monolith/control_unit/pipeline_bundles.h)  
+**Source Implementation:** [`control_unit/pipeline_processor.cpp`](control_unit/pipeline_processor.cpp), [`control_unit/hazard_unit.h`](control_unit/hazard_unit.h), [`control_unit/pipeline_bundles.h`](control_unit/pipeline_bundles.h)  
 
 ---
 
 ## 1. Overview & Pipeline Configurations
 
-The RISC201 replaces the classical serialized single-bus datapath (documented in [`legacy/`](file:///e:/CSC-201/Monolith/legacy)) with a fully synchronous, interlocked pipelined execution engine. The processor supports two distinct pipeline configurations selectable at runtime via the `--stages` flag:
+The RISC201 replaces the classical serialized single-bus datapath (documented in [`legacy/`](legacy)) with a fully synchronous, interlocked pipelined execution engine. The processor supports two distinct pipeline configurations selectable at runtime via the `--stages` flag:
 
 ```mermaid
 graph TD
@@ -46,7 +46,7 @@ graph TD
 
 ## 2. Synchronous Inter-Stage Latches
 
-Data, decoded control bundles, and status flags are transferred between adjacent pipeline stages on every rising clock edge using synchronous latch bundles defined in [`control_unit/pipeline_bundles.h`](file:///e:/CSC-201/Monolith/control_unit/pipeline_bundles.h).
+Data, decoded control bundles, and status flags are transferred between adjacent pipeline stages on every rising clock edge using synchronous latch bundles defined in [`control_unit/pipeline_bundles.h`](control_unit/pipeline_bundles.h).
 
 ```
 4-Stage Latch Chain:   [PC] ──► [IF/OF] ──► [OF/EX] ──► [EX/MA_RW] ──► (Architectural Commit)
@@ -70,7 +70,7 @@ Data, decoded control bundles, and status flags are transferred between adjacent
    - `rs1_val`, `rs2_val`: Operand values retrieved from the register file or forwarded.
    - `imm32`: Decoded, sign-extended, or high-shifted 32-bit immediate operand.
    - `branch_target`: PC-relative target address computed during decode (`pc + (imm << 2)`).
-   - `control`: Decoded [`PipelineControlBundle`](file:///e:/CSC-201/Monolith/control_unit/pipeline_bundles.h#L52) containing stage-decoupled sub-bundles:
+   - `control`: Decoded [`PipelineControlBundle`](control_unit/pipeline_bundles.h#L52) containing stage-decoupled sub-bundles:
      - `ExControl`: ALU/FPU operation code, operand multiplexer selectors, condition flag update enable, branch condition.
      - `ChkControl`: Memory firewall check mode and bounds assertion enable.
      - `MaControl`: Memory read strobe, memory write strobe, floating-point memory transfer flag.
@@ -115,9 +115,9 @@ graph TD
     end
 ```
 
-### Forwarding Unit Logic ([`control_unit/hazard_unit.h`](file:///e:/CSC-201/Monolith/control_unit/hazard_unit.h))
+### Forwarding Unit Logic ([`control_unit/hazard_unit.h`](control_unit/hazard_unit.h))
 
-The [`ForwardingUnit`](file:///e:/CSC-201/Monolith/control_unit/hazard_unit.h#L26) inspects the source registers (`rs1`, `rs2`) of the instruction in `OF/EX` and compares them against the destination registers of all downstream pipeline latches, checking domain matching (GPR vs. FPR) and destination non-zero (`rd != 0` for GPRs):
+The [`ForwardingUnit`](control_unit/hazard_unit.h#L26) inspects the source registers (`rs1`, `rs2`) of the instruction in `OF/EX` and compares them against the destination registers of all downstream pipeline latches, checking domain matching (GPR vs. FPR) and destination non-zero (`rd != 0` for GPRs):
 
 1. **Stage 4 Forwarding (Bypass 1):**  
    If `ExStageLatch.valid && ExStageLatch.reg_write_en && ExStageLatch.rd == rs1 && ExStageLatch.is_fpu == rs1_is_fpu`, and the stage is producing an ALU/FPU result (not awaiting memory read):
@@ -156,9 +156,9 @@ sequenceDiagram
     Note over EX: ADD enters EX; forwards r1 from MA/RW
 ```
 
-### Hazard Detection Unit ([`control_unit/hazard_unit.h`](file:///e:/CSC-201/Monolith/control_unit/hazard_unit.h#L86))
+### Hazard Detection Unit ([`control_unit/hazard_unit.h`](control_unit/hazard_unit.h#L86))
 
-The [`HazardDetectionUnit`](file:///e:/CSC-201/Monolith/control_unit/hazard_unit.h#L86) identifies load-use hazards during the Decode (`OF`) stage by checking:
+The [`HazardDetectionUnit`](control_unit/hazard_unit.h#L86) identifies load-use hazards during the Decode (`OF`) stage by checking:
 ```cpp
 bool is_load = of_ex.valid && of_ex.control.ma.mem_read;
 bool dest_matches_a = (of_ex.rd == decode_rs1) && (of_ex.dest_is_fpu == rs1_is_fpu);
