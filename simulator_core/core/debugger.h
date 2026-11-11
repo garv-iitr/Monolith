@@ -80,6 +80,18 @@ class Debugger {
     refresh();
   }
 
+  // Swap the stage layout and control encoding under the running debugger. The
+  // machine is rebuilt from scratch, so the caller reloads any program.
+  void reconfigure(risc201::cu::StageLayout layout, ControlEncoding encoding) {
+    clear_history();
+    cpu_.reconfigure(layout, encoding);
+    micro_steps_ = 0;
+    micro_ops_this_instruction_ = 0;
+    at_boundary_ = true;
+    active_instruction_address_ = cpu_.pc();
+    refresh();
+  }
+
   // run one whole instruction (advances cycles until one instruction retires)
   bool step_instruction() {
     if (cpu_.halted()) return false;
