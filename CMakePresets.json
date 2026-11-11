@@ -1,0 +1,116 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Default (System Compiler + FTXUI TUI)",
+      "description": "Auto-selects native generator (MSVC/Xcode/Unix Makefiles) with interactive TUI enabled",
+      "binaryDir": "${sourceDir}/build/default",
+      "cacheVariables": {
+        "RISC201_TUI": "ON",
+        "RISC201_WORD_BITS": "32"
+      }
+    },
+    {
+      "name": "headless",
+      "displayName": "Headless (System Compiler, Offline / No FTXUI)",
+      "description": "Zero-dependency build without network fetch; builds core simulator, CLI debugger, assembler, disassembler, and all tests",
+      "binaryDir": "${sourceDir}/build/headless",
+      "cacheVariables": {
+        "RISC201_TUI": "OFF",
+        "RISC201_WORD_BITS": "32"
+      }
+    },
+    {
+      "name": "mingw",
+      "displayName": "Windows MinGW + FTXUI TUI",
+      "description": "MinGW Makefiles build on Windows with interactive TUI",
+      "generator": "MinGW Makefiles",
+      "binaryDir": "${sourceDir}/build/mingw",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "RISC201_TUI": "ON",
+        "RISC201_WORD_BITS": "32"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "mingw-headless",
+      "displayName": "Windows MinGW Headless (Offline / No FTXUI)",
+      "description": "MinGW Makefiles offline build without FTXUI",
+      "generator": "MinGW Makefiles",
+      "binaryDir": "${sourceDir}/build/mingw-headless",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "RISC201_TUI": "OFF",
+        "RISC201_WORD_BITS": "32"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "configuration": "Release"
+    },
+    {
+      "name": "headless",
+      "configurePreset": "headless",
+      "configuration": "Release"
+    },
+    {
+      "name": "mingw",
+      "configurePreset": "mingw"
+    },
+    {
+      "name": "mingw-headless",
+      "configurePreset": "mingw-headless"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "headless",
+      "configurePreset": "headless",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "mingw",
+      "configurePreset": "mingw",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "mingw-headless",
+      "configurePreset": "mingw-headless",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

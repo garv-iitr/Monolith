@@ -118,14 +118,17 @@ bitset<32> ALU::twos_complement(const bitset<32>& a) const {
 }
 
 // booth and non restoring div
-bitset<32> ALU::algo_Radix4BoothMul(const bitset<32>& a, const bitset<32>& b) const {
+pair<bitset<32>, bitset<32>> ALU::algo_Radix4BoothMul64(const bitset<32>& a, const bitset<32>& b) const {
     bitset<32> A = 0;
     bitset<32> Q = b;
     bitset<32> M = a;
     bool q_minus_1 = false, dummy_cout, dummy_ovf;
 
     for (int i = 0; i < 16; ++i) {
-        uint8_t window = (Q[1] << 2) | (Q[0] << 1) | q_minus_1;
+        const uint8_t window = static_cast<uint8_t>(
+            (static_cast<uint8_t>(Q[1]) << 2) |
+            (static_cast<uint8_t>(Q[0]) << 1) |
+            static_cast<uint8_t>(q_minus_1));
         bitset<32> addend = 0;
         
         switch (window) {
@@ -142,7 +145,15 @@ bitset<32> ALU::algo_Radix4BoothMul(const bitset<32>& a, const bitset<32>& b) co
         Q[31] = a_lsb_1; Q[30] = a_lsb_0;
         A = shift_ASR(A, 2); 
     }
-    return Q; 
+    return {A, Q};
+}
+
+pair<bitset<32>, bitset<32>> ALU::radix4BoothMul64(const bitset<32>& a, const bitset<32>& b) {
+    return ALU().algo_Radix4BoothMul64(a, b);
+}
+
+bitset<32> ALU::algo_Radix4BoothMul(const bitset<32>& a, const bitset<32>& b) const {
+    return algo_Radix4BoothMul64(a, b).second;
 }
 
 pair<bitset<32>, bitset<32>> ALU::algo_NonRestoringDiv(const bitset<32>& dividend, const bitset<32>& divisor) const {

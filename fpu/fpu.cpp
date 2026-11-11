@@ -1,4 +1,5 @@
 #include "fpu.h"
+#include "alu/alu.h"
 
 using namespace std;
 using namespace risc201::cu;
@@ -148,34 +149,6 @@ bitset<32> FPU::ks_SUB(const bitset<32>& a, const bitset<32>& b, bool& cout, boo
 bitset<32> FPU::twos_complement(const bitset<32>& a) const {
     bool dummy_cout, dummy_ovf;
     return ks_SUB(bitset<32>(0), a, dummy_cout, dummy_ovf);
-}
-
-// 16-iteration Radix-4 Booth Multiplier returning full 64-bit [A:Q] register pair for FMUL
-pair<bitset<32>, bitset<32>> FPU::algo_Radix4BoothMul64(const bitset<32>& a, const bitset<32>& b) const {
-    bitset<32> A = 0;
-    bitset<32> Q = b;
-    bitset<32> M = a;
-    bool q_minus_1 = false, dummy_cout, dummy_ovf;
-
-    for (int i = 0; i < 16; ++i) {
-        uint8_t window = (Q[1] << 2) | (Q[0] << 1) | q_minus_1;
-        bitset<32> addend = 0;
-
-        switch (window) {
-            case 1: case 2: addend = M; A = ks_ADD(A, addend, false, dummy_cout, dummy_ovf); break;
-            case 3:         addend = shift_LSL(M, 1); A = ks_ADD(A, addend, false, dummy_cout, dummy_ovf); break;
-            case 4:         addend = shift_LSL(M, 1); A = ks_SUB(A, addend, dummy_cout, dummy_ovf); break;
-            case 5: case 6: addend = M; A = ks_SUB(A, addend, dummy_cout, dummy_ovf); break;
-            case 0: case 7: break;
-        }
-
-        q_minus_1 = Q[1];
-        bool a_lsb_0 = A[0], a_lsb_1 = A[1];
-        Q = shift_LSR(Q, 2);
-        Q[31] = a_lsb_1; Q[30] = a_lsb_0;
-        A = shift_ASR(A, 2);
-    }
-    return {A, Q};
 }
 
 // 32-stage Non-Restoring Mantissa Divider (Dividend hardwired into Accumulator A, Q = 0)
@@ -410,7 +383,7 @@ bitset<32> FPU::exec_FMUL(const bitset<32>& a, const bitset<32>& b, bool& cout, 
     bitset<32> exp_res = ks_SUB(exp_sum, bitset<32>(127), dummy_cout, dummy_ovf);
 
     // Step 2: 24x24 Mantissa Multiplication via 16-stage Radix-4 Booth Multiplier
-    auto prod_pair = algo_Radix4BoothMul64(ua.mant, ub.mant);
+    auto prod_pair = ALU::radix4BoothMul64(ua.mant, ub.mant);
     bitset<32> prod_hi = prod_pair.first;
     bitset<32> prod_lo = prod_pair.second;
 

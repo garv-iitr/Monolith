@@ -1,0 +1,81 @@
+name: Cross-Platform Build & Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu Linux (TUI + Core)
+            os: ubuntu-latest
+            tui: "ON"
+            config: Release
+          - name: macOS (TUI + Core)
+            os: macos-latest
+            tui: "ON"
+            config: Release
+          - name: Windows MSVC (TUI + Core)
+            os: windows-latest
+            tui: "ON"
+            config: Release
+          - name: Windows MSVC (Headless)
+            os: windows-latest
+            tui: "OFF"
+            config: Release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DRISC201_TUI=${{ matrix.tui }}
+
+      - name: Build
+        run: cmake --build build --config ${{ matrix.config }} --parallel
+
+      - name: Run CTest Suite (22 tests)
+        run: ctest --test-dir build -C ${{ matrix.config }} --output-on-failure
+
+      - name: Run Core Unit Tests Summary
+        shell: bash
+        run: |
+          if [ -x build/risc201-tests ]; then
+            ./build/risc201-tests
+          else
+            ./build/${{ matrix.config }}/risc201-tests.exe
+          fi
+
+  windows-mingw:
+    name: Windows MinGW-w64 (GCC)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2 MinGW-w64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-make
+            git
+
+      - name: Configure, Build & Test (Headless + Core)
+        run: |
+          cmake -S . -B build-mingw -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DRISC201_TUI=OFF
+          cmake --build build-mingw --parallel
+          ctest --test-dir build-mingw --output-on-failure
+          ./build-mingw/risc201-tests.exe

@@ -43,6 +43,7 @@ private:
     std::bitset<32> twos_complement(const std::bitset<32>& a) const;
 
     // booth mul and non restoring div
+    std::pair<std::bitset<32>, std::bitset<32>> algo_Radix4BoothMul64(const std::bitset<32>& a, const std::bitset<32>& b) const;
     std::bitset<32> algo_Radix4BoothMul(const std::bitset<32>& a, const std::bitset<32>& b) const;
     std::pair<std::bitset<32>, std::bitset<32>> algo_NonRestoringDiv(const std::bitset<32>& dividend, const std::bitset<32>& divisor) const;
 
@@ -52,6 +53,9 @@ private:
 public:
     ALU() = default;
     ~ALU() = default;
+
+    // 64-bit [A:Q] Radix-4 Booth product shared by integer MUL and FPU FMUL.
+    static std::pair<std::bitset<32>, std::bitset<32>> radix4BoothMul64(const std::bitset<32>& a, const std::bitset<32>& b);
 
     AluResult execute(risc201::cu::AluOp op, Word a, Word b) const;
 };

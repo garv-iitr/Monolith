@@ -220,17 +220,26 @@ class Cpu {
     // Compatibility mirror of internal latches
     v.micro.pc = pipe_.pc();
     v.micro.ir = v.ir;
+    v.micro.I = get_ibit(pipe_.latch_of_ex().raw);
+    v.micro.branch_target = pipe_.latch_of_ex().branch_target;
     v.micro.A = pipe_.latch_of_ex().rs1_val;
     v.micro.B = pipe_.latch_of_ex().rs2_val;
     v.micro.alu_result = pipe_.latch_ex_stage().alu_result;
     v.micro.mar = pipe_.latch_ex_stage().effective_addr;
     v.micro.mdr = pipe_.latch_ex_stage().store_val;
     v.micro.ld_result = pipe_.latch_ma_rw().wb_data;
+    v.micro.reg_src = pipe_.latch_of_ex().rs1;
+    v.micro.reg_val = pipe_.latch_of_ex().rs1_val;
+    v.micro.reg_data = pipe_.latch_ma_rw().wb_data;
     v.micro.immx = pipe_.latch_of_ex().imm32;
     v.micro.rd = pipe_.latch_of_ex().rd;
     v.micro.rs1 = pipe_.latch_of_ex().rs1;
     v.micro.rs2 = pipe_.latch_of_ex().rs2;
     v.micro.flags = pipe_.flags();
+    v.micro.flags_N = pipe_.flags().N;
+    v.micro.flags_E = pipe_.flags().Z;
+    v.micro.flags_GT = (!pipe_.flags().N && !pipe_.flags().Z);
+    v.micro.micro_pc = v.micro_pc;
 
     return v;
   }

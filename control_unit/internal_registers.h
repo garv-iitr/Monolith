@@ -57,15 +57,6 @@ struct InternalRegisters {
 
   // --- Micro-Sequencer State -----------------------------------------------
   std::uint16_t micro_pc = 0;// Current execution address in Control Memory ROM
-
-  // Resets all internal registers to their power-on defaults (zeros)
-  void reset();
-
-  // Dynamic getter retrieving register value by InternalReg enum selector
-  Word get(InternalReg reg) const;
-
-  // Dynamic setter writing register value by InternalReg enum selector and synchronizing flag mirrors
-  void set(InternalReg reg, Word value);
 };
 
 }  // namespace risc201::cu

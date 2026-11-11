@@ -53,8 +53,7 @@ private:
     std::bitset<32> ks_SUB(const std::bitset<32>& a, const std::bitset<32>& b, bool& cout, bool& overflow) const;
     std::bitset<32> twos_complement(const std::bitset<32>& a) const;
 
-    // 64-bit [A:Q] booth mul and mantissa non-restoring div (A = dividend, Q = 0)
-    std::pair<std::bitset<32>, std::bitset<32>> algo_Radix4BoothMul64(const std::bitset<32>& a, const std::bitset<32>& b) const;
+    // mantissa non-restoring div (A = dividend, Q = 0)
     std::pair<std::bitset<32>, std::bitset<32>> algo_MantissaNonRestoringDiv(const std::bitset<32>& dividend, const std::bitset<32>& divisor) const;
 
     // IEEE-754 unpack, shared normalizer/rounder, and execution lanes

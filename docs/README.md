@@ -8,6 +8,7 @@ This directory contains the engineering specifications, microarchitectural analy
 
 | Document | Focus & Scope | Key Topics Covered |
 | :--- | :--- | :--- |
+| **[`datapath_schematic.html`](./datapath_schematic.html)** | **Interactive Hardware Schematic** | Open directly in any web browser (zero build required). Switch between **4-Stage** and **6-Stage** views, inspect **48-bit Horizontal** vs. **24-bit Vertical** control words, filter signal domains, and click any block to view its C++ definition. |
 | **[`architecture.md`](./architecture.md)** | **Processor Hardware Specification** | Datapath comparison (Single-Bus Sarangi 9.22 vs. Pipelined RISC201), 4-stage and 6-stage designs, 48-bit Horizontal vs. 24-bit Vertical Control ROMs, micro-sequencer for multi-cycle instructions, ALU, and IEEE-754 FPU. |
 | **[`pipeline.md`](./pipeline.md)** | **Pipelining, Forwarding & Hazards** | Inter-stage latches (`IfOfLatch`, `OfExLatch`, `ExStageLatch`, `ChkMaLatch`, `MaRwLatch`), 3-level RAW data forwarding, load-use stall interlocks, speculative branch flush penalties, and micro-op streaming. |
 | **[`isa.md`](./isa.md)** | **Instruction Set Architecture (ISA)** | Canonical 34-opcode table, 8 instruction formats (F1–F8), condition flags (`Z`, `N`, `C`, `V`), register conventions (`r0`–`r15`, `f0`–`f15`), and full-descending stack macro expansion rules (`PUSH`, `POP`, `SPUSH`, `SPOP`). |
@@ -35,17 +36,24 @@ The RISC201 processor codebase reflects a complete microarchitectural evolution:
 
 ## Build & Test Quick Reference
 
-```powershell
-# Build all targets with MinGW Makefiles
-cmake -B build -G "MinGW Makefiles"
-cmake --build build
+Using [`CMakePresets.json`](../CMakePresets.json) works across **Windows (MSVC or Visual Studio IDE), macOS (Apple Clang), Linux (GCC/Clang)**, and **Windows MinGW**:
 
-# Run automated CTest test harness (22/22 passing)
-ctest --test-dir build --output-on-failure
+```bash
+# 1. Cross-platform default build (Native compiler + Interactive FTXUI TUI)
+cmake --preset default
+cmake --build --preset default --parallel
+ctest --preset default
 
-# Run full unit test and hardware safety regression suite
-.\build\risc201-tests.exe
+# 2. Offline / zero-network headless build (CLI debugger, assembler, disassembler, tests)
+cmake --preset headless
+cmake --build --preset headless --parallel
+ctest --preset headless
+```
 
+On macOS/Linux binaries live in `build/default/` (or `build/headless/`); on Windows MSVC they live in `build/default/Release/` (or `build/headless/Release/`):
+
+```bash
 # Launch the interactive FTXUI Terminal User Interface
-.\build\risc201-sim.exe --tui
+./build/default/risc201-sim --tui        # macOS / Linux
+.\build\default\Release\risc201-sim.exe --tui   # Windows MSVC
 ```

@@ -96,8 +96,7 @@ The TUI incorporates direct integration with the standalone assembler [`risc201a
 3. The simulator invokes the standalone `risc201asm` tool via CLI (`risc201asm <file> <file>.hex --hex`).
 4. On successful assembly:
    - The CPU is reset to clean initial conditions.
-   - The compiled text segment is loaded starting at address `0x00000`.
-   - Any static data defined via `.data` is loaded starting at address `0x10000`.
+   - The assembled flat word stream is loaded starting at address `0x00000` (separate data images can also be loaded at `0x10000` via the CLI `load <text.hex> [data.hex]` command).
    - The original source code lines are displayed in the source pane, mapped directly to machine code execution addresses.
 5. If syntax or semantic assembly errors occur, an error message is surfaced in the status line without disturbing the currently running program.
 
@@ -142,10 +141,16 @@ The debugger features **reversible execution** powered by a bounded circular che
 
 For automated batch testing or environments without interactive terminal support, the simulator can be executed in line mode:
 
+```bash
+# macOS / Linux (after: cmake --preset default && cmake --build --preset default)
+./build/default/risc201asm tests/programs/fib.asm fib.hex --hex
+./build/default/risc201-sim --headless fib.hex
+```
+
 ```powershell
-# Run headless simulation of a program
-.\build\risc201asm.exe tests\programs\fib.asm fib.hex --hex
-.\build\risc201-sim.exe --headless fib.hex
+# Windows MSVC (after: cmake --preset headless && cmake --build --preset headless)
+.\build\headless\Release\risc201asm.exe tests\programs\fib.asm fib.hex --hex
+.\build\headless\Release\risc201-sim.exe --headless fib.hex
 ```
 
 ### Supported CLI Commands

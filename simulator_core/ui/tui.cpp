@@ -14,6 +14,8 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
 #else
 #include <unistd.h>
 #endif
@@ -54,14 +56,24 @@ std::string hex_value(Word value) {
 
 // the assembler ships next to this binary, so resolve our own directory first
 std::string executable_dir() {
+  std::string self;
 #ifdef _WIN32
   char buffer[MAX_PATH] = {0};
   const DWORD written = GetModuleFileNameA(nullptr, buffer, MAX_PATH);
-  const std::string self(buffer, written > 0 ? static_cast<std::size_t>(written) : 0);
+  self.assign(buffer, written > 0 ? static_cast<std::size_t>(written) : 0);
+#elif defined(__APPLE__)
+  std::uint32_t size = 0;
+  _NSGetExecutablePath(nullptr, &size);
+  if (size > 0) {
+    std::vector<char> buffer(size, '\0');
+    if (_NSGetExecutablePath(buffer.data(), &size) == 0) {
+      self = buffer.data();
+    }
+  }
 #else
   char buffer[4096] = {0};
   const ssize_t written = ::readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
-  const std::string self(buffer, written > 0 ? static_cast<std::size_t>(written) : 0);
+  self.assign(buffer, written > 0 ? static_cast<std::size_t>(written) : 0);
 #endif
   const std::size_t slash = self.find_last_of("/\\");
   return slash == std::string::npos ? std::string() : self.substr(0, slash + 1);

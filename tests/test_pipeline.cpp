@@ -237,7 +237,7 @@ RISC201_TEST(pipeline_runtime_memory_safety_covers_all_memory_paths) {
       for (const auto& address_case :
            {std::pair<Word, ExceptionCode>{0xFFC, ExceptionCode::BAD_MEM_ACCESS},
             {0x10001, ExceptionCode::MISALIGNED_ACCESS},
-            {risc201::safety::MemoryMap::kAddressSpaceBytes,
+            {static_cast<Word>(risc201::safety::MemoryMap::kAddressSpaceBytes),
              ExceptionCode::BAD_MEM_ACCESS}}) {
         PipelineProcessor cpu(config.layout, config.vertical,
                               risc201::cu::MemoryUnit::kDefaultWords, true);
@@ -262,7 +262,7 @@ RISC201_TEST(pipeline_runtime_memory_safety_covers_all_memory_paths) {
       for (const auto& address_case :
            {std::pair<Word, ExceptionCode>{0xFFC, ExceptionCode::BAD_MEM_ACCESS},
             {0x10001, ExceptionCode::MISALIGNED_ACCESS},
-            {risc201::safety::MemoryMap::kAddressSpaceBytes,
+            {static_cast<Word>(risc201::safety::MemoryMap::kAddressSpaceBytes),
              ExceptionCode::BAD_MEM_ACCESS}}) {
         PipelineProcessor cpu(config.layout, config.vertical,
                               risc201::cu::MemoryUnit::kDefaultWords, true);
@@ -293,7 +293,7 @@ RISC201_TEST(pipeline_runtime_memory_safety_covers_all_memory_paths) {
          {std::pair<Word, ExceptionCode>{data_address, ExceptionCode::NONE},
           {0xFFC, ExceptionCode::BAD_MEM_ACCESS},
           {0x10001, ExceptionCode::MISALIGNED_ACCESS},
-          {risc201::safety::MemoryMap::kAddressSpaceBytes,
+          {static_cast<Word>(risc201::safety::MemoryMap::kAddressSpaceBytes),
            ExceptionCode::BAD_MEM_ACCESS}}) {
       PipelineProcessor cpu(config.layout, config.vertical,
                             risc201::cu::MemoryUnit::kDefaultWords, true);
