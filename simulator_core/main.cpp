@@ -298,9 +298,7 @@ int main(int argc, char* argv[]) {
 
   if (use_tui) {
 #ifdef RISC201_HAS_TUI
-    return risc201::run_tui(
-        dbg, encoding == risc201::ControlEncoding::VERTICAL,
-        static_cast<unsigned>(layout));
+    return risc201::run_tui(dbg);
 #else
     std::printf("This build has no TUI. Reconfigure with -DRISC201_TUI=ON.\n");
     return 1;
