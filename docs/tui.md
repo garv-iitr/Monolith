@@ -32,6 +32,11 @@ graph TD
 .\build\risc201-sim.exe --stages 4 --encoding horizontal fib.hex
 ```
 
+The stage layout and control encoding can also be changed once the simulator is
+running: press `c`, pick a configuration in the dialogue, and press `Enter`. The
+machine is rebuilt with the new pipeline and control store, and any loaded
+program is reloaded from its entry point. `Esc` leaves the machine untouched.
+
 ---
 
 ## 2. Interactive TUI Display Panes
@@ -118,6 +123,7 @@ The debugger features **reversible execution** powered by a bounded circular che
 | Key | Context | Action |
 | :---: | :--- | :--- |
 | **`o`** | Global | Open and assemble an assembly source file (`.asm`) |
+| **`c`** | Global | Open the processor configuration dialogue (stage layout and control encoding) |
 | **`s`** / **`Down`** | Source Pane | Step one instruction forward |
 | **`u`** / **`Up`** | Source Pane | Step one instruction backward (reverse execution) |
 | **`r`** | Global | Run / pause execution |
