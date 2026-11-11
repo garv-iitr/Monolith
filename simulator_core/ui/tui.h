@@ -3,5 +3,5 @@
 namespace risc201 {
 class Debugger;
 
-int run_tui(Debugger& debugger, bool vertical, unsigned stages);
+int run_tui(Debugger& debugger);
 }

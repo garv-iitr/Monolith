@@ -219,11 +219,13 @@ Elements stack_pane_rows(const risc201::safety::StackTable& table) {
 
 class SimulatorTui : public ComponentBase {
  public:
-  SimulatorTui(Debugger& debugger, bool vertical, unsigned stages)
-      : debugger_(debugger), vertical_(vertical), stages_(stages) {}
+  SimulatorTui(Debugger& debugger) : debugger_(debugger) {}
 
   Element Render() override {
     const StateView& view = debugger_.view();
+    // the machine may be reconfigured at runtime, so read the live settings
+    const bool vertical = debugger_.cpu().encoding() == ControlEncoding::VERTICAL;
+    const unsigned stages = static_cast<unsigned>(debugger_.cpu().layout());
 
     Elements source_rows;
     if (source_.empty()) {
@@ -271,14 +273,14 @@ class SimulatorTui : public ComponentBase {
       register_rows.push_back(freg_row);
     }
 
-    const std::string stage_str = (view.stage && view.stage[0] != '\0') ? view.stage : (stages_ == 4 ? "4-STAGE" : "6-STAGE");
+    const std::string stage_str = (view.stage && view.stage[0] != '\0') ? view.stage : (stages == 4 ? "4-STAGE" : "6-STAGE");
 
     Elements execution_rows = {
         text("Retire PC  0x" + hex_value(view.pc)) | color(Color::Cyan),
         text("Fetch PC   0x" + hex_value(debugger_.cpu().pipe().fetch_pc())) | color(Color::CyanLight),
         text("Decode IR  0x" + hex_value(view.ir) + " (" + std::string(opcode_name(opcode_of(view.ir))) + ")") |
             color(Color::RGB(238, 190, 92)) | bold,
-        text("Mode       " + stage_str + " / " + (vertical_ ? "Vertical" : "Horizontal")) |
+        text("Mode       " + stage_str + " / " + (vertical ? "Vertical" : "Horizontal")) |
             color(Color::Cyan),
         text("Flags      Z=" + bit(view.flags.Z) + " N=" + bit(view.flags.N) +
              " C=" + bit(view.flags.C) + " V=" + bit(view.flags.V)) |
@@ -317,10 +319,10 @@ class SimulatorTui : public ComponentBase {
 
     // [EX/CHK] (6-stage) or [EX/MA] (4-stage) Latch
     if (!view.ex_stage.valid || view.ex_stage.bubble) {
-      execution_rows.push_back(text(stages_ == 6 ? "[EX/CHK] [BUBBLE]" : "[EX/MA]  [BUBBLE]") |
+      execution_rows.push_back(text(stages == 6 ? "[EX/CHK] [BUBBLE]" : "[EX/MA]  [BUBBLE]") |
                                color(Color::RGB(120, 140, 160)));
     } else {
-      std::string ex_str = (stages_ == 6 ? "[EX/CHK] " : "[EX/MA]  ");
+      std::string ex_str = (stages == 6 ? "[EX/CHK] " : "[EX/MA]  ");
       ex_str += "ALU=0x" + hex_value(view.ex_stage.alu_result);
       if (view.ex_stage.control.ma.mem_read || view.ex_stage.control.ma.mem_write ||
           view.ex_stage.control.chk.memchk_enable || view.ex_stage.control.ex.is_call ||
@@ -337,7 +339,7 @@ class SimulatorTui : public ComponentBase {
     }
 
     // 6-stage latches: [CHK/MA], [MA/WB], [COMMIT]
-    if (stages_ == 6) {
+    if (stages == 6) {
       // [CHK/MA]
       if (!view.chk_ma.valid || view.chk_ma.bubble) {
         execution_rows.push_back(text("[CHK/MA] [BUBBLE]") | color(Color::RGB(120, 140, 160)));
@@ -434,9 +436,9 @@ class SimulatorTui : public ComponentBase {
 
     Element header = hbox({
         text(" RISC201 ") | bold | color(Color::Black) | bgcolor(Color::Cyan),
-        text("  " + std::to_string(stages_) + "-STAGE ") | color(Color::White) | bold,
-        text(vertical_ ? "VERTICAL" : "HORIZONTAL") |
-            color(vertical_ ? Color::Yellow : Color::Green) | bold,
+        text("  " + std::to_string(stages) + "-STAGE ") | color(Color::White) | bold,
+        text(vertical ? "VERTICAL" : "HORIZONTAL") |
+            color(vertical ? Color::Yellow : Color::Green) | bold,
         filler(),
         text(" " + status_text(debugger_) + " ") | color(status_color(debugger_)) | bold,
         text(" | PC: 0x" + hex_value(view.pc) + " | Fetch: 0x" +
@@ -455,7 +457,7 @@ class SimulatorTui : public ComponentBase {
 
     Element footer = vbox({
         hbox({
-            text(" s:step  u:back  r:run  b:break  Tab:pane  o:open  v:stack/mem  g:addr  x:reset  ?:help  q:quit") |
+            text(" s:step  u:back  r:run  b:break  Tab:pane  o:open  c:config  v:stack/mem  g:addr  x:reset  ?:help  q:quit") |
                 color(Color::GrayLight),
             filler(),
             text(running_ ? "[RUNNING]" : "[PAUSED]") | color(running_ ? Color::GreenLight : Color::Yellow) | bold,
@@ -475,6 +477,7 @@ class SimulatorTui : public ComponentBase {
           text(" SOURCE-DRIVEN RISC201 DEBUGGER ") | bold | color(Color::Cyan),
           separator(),
           text("o       open and assemble an .asm file"),
+          text("c       configure stage layout and control encoding"),
           text("Down / Up in source: step forward / back one instruction"),
           text("s       step instruction; u       step back one instruction"),
           text("Back-step history keeps the most recent 4096 steps"),
@@ -484,6 +487,28 @@ class SimulatorTui : public ComponentBase {
           text("x       reset loaded program; q       quit"),
           text("Press F1 or Escape to close") | color(Color::GrayDark),
       }) | border | color(Color::Cyan))});
+    }
+    if (show_config_) {
+      auto field = [&](const char* name, bool active) {
+        Element label = text(std::string(active ? "\u25B8 " : "  ") + name) |
+                        color(active ? Color::Yellow : Color::GrayLight);
+        return active ? (label | bold) : label;
+      };
+      Element panel = vbox({
+          text(" PROCESSOR CONFIGURATION ") | bold | color(Color::Cyan),
+          separator(),
+          field("Stage layout", config_field_ == 0),
+          config_stages_box_->Render() | color(Color::GrayLight),
+          separator(),
+          field("Control encoding", config_field_ == 1),
+          config_encoding_box_->Render() | color(Color::GrayLight),
+          separator(),
+          text(" Tab field \u00B7 arrows choose \u00B7 Enter apply \u00B7 Esc cancel ") |
+              color(Color::GrayDark),
+      }) | border | color(Color::Cyan);
+      // full-screen panel: dbox would let the panes behind show through the gaps
+      return vbox({filler(), hbox({filler(), std::move(panel), filler()}), filler()}) |
+             bgcolor(Color::RGB(16, 20, 26)) | color(Color::GrayLight) | flex;
     }
     if (show_input_) {
       const int dialog_width = std::max(20, Terminal::Size().dimx - 8);
@@ -497,6 +522,7 @@ class SimulatorTui : public ComponentBase {
   }
 
   bool OnEvent(Event event) override {
+    if (show_config_) return handle_config_event(event);
     if (show_input_) return handle_input_event(event);
     if (event == Event::Tab || event == Event::TabReverse) {
       focus_ = (focus_ + (event == Event::Tab ? 1 : 3)) % 4;
@@ -563,6 +589,10 @@ class SimulatorTui : public ComponentBase {
       });
       return true;
     }
+    if (event == Event::Character('c')) {
+      open_config();
+      return true;
+    }
     if (event == Event::Character('x')) {
       stop_running();
       if (!loaded_image_) {
@@ -623,6 +653,79 @@ class SimulatorTui : public ComponentBase {
       return true;
     }
     return input_component_->OnEvent(event);
+  }
+
+  void open_config() {
+    stop_running();
+    config_stage_idx_ =
+        (debugger_.cpu().layout() == risc201::cu::StageLayout::FOUR_STAGE) ? 0 : 1;
+    config_encoding_idx_ =
+        (debugger_.cpu().encoding() == ControlEncoding::VERTICAL) ? 1 : 0;
+
+    stage_options_ = {"4-stage   IF/OF > EX > MA/RW",
+                      "6-stage   IF/OF > EX > MEMCHK > MA > RW"};
+    encoding_options_ = {"Horizontal  48-bit control word",
+                         "Vertical  24-bit word + micro-decoder"};
+
+    config_stages_box_ = Radiobox(&stage_options_, &config_stage_idx_);
+    config_encoding_box_ = Radiobox(&encoding_options_, &config_encoding_idx_);
+
+    config_field_ = 0;
+    show_config_ = true;
+    message_ = "pick a configuration, then Enter to apply";
+    message_error_ = false;
+  }
+
+  bool handle_config_event(Event event) {
+    if (event == Event::Escape) {
+      show_config_ = false;
+      message_ = "configuration unchanged";
+      return true;
+    }
+    if (event == Event::Return) {
+      apply_config();
+      return true;
+    }
+    if (event == Event::Tab || event == Event::TabReverse) {
+      config_field_ = 1 - config_field_;
+      return true;
+    }
+    if (event == Event::ArrowUp || event == Event::ArrowLeft) {
+      int& choice = (config_field_ == 0) ? config_stage_idx_ : config_encoding_idx_;
+      choice = std::max(0, choice - 1);
+      return true;
+    }
+    if (event == Event::ArrowDown || event == Event::ArrowRight) {
+      int& choice = (config_field_ == 0) ? config_stage_idx_ : config_encoding_idx_;
+      choice = std::min(1, choice + 1);
+      return true;
+    }
+    return true;
+  }
+
+  void apply_config() {
+    const auto layout = (config_stage_idx_ == 0)
+                            ? risc201::cu::StageLayout::FOUR_STAGE
+                            : risc201::cu::StageLayout::SIX_STAGE;
+    const auto encoding = (config_encoding_idx_ == 0) ? ControlEncoding::HORIZONTAL
+                                                      : ControlEncoding::VERTICAL;
+    show_config_ = false;
+    debugger_.reconfigure(layout, encoding);
+
+    // the machine was rebuilt, so put the loaded program back at its entry point
+    if (loaded_image_) {
+      debugger_.load_program(text_base_, text_words_, data_base_, data_words_);
+      active_instruction_address_ = text_base_;
+    } else {
+      active_instruction_address_ = debugger_.cpu().pc();
+    }
+    current_source_line_ = -1;
+    source_selection_ = first_executable_line();
+
+    message_ = "reconfigured: " + std::to_string(static_cast<unsigned>(layout)) +
+               "-stage " + (encoding == ControlEncoding::VERTICAL ? "vertical" : "horizontal") +
+               (loaded_image_ ? ", program reloaded" : "");
+    message_error_ = false;
   }
 
   void assemble_file(const std::string& input_path) {
@@ -800,12 +903,18 @@ class SimulatorTui : public ComponentBase {
   }
 
   Debugger& debugger_;
-  bool vertical_ = false;
-  unsigned stages_ = 6;
   int focus_ = 0;
   bool show_memory_ = false;
   bool show_help_ = false;
   bool show_input_ = false;
+  bool show_config_ = false;
+  int config_field_ = 0;
+  int config_stage_idx_ = 1;
+  int config_encoding_idx_ = 0;
+  std::vector<std::string> stage_options_;
+  std::vector<std::string> encoding_options_;
+  Component config_stages_box_;
+  Component config_encoding_box_;
   bool running_ = false;
   bool skip_current_breakpoint_ = false;
   bool loaded_image_ = false;
@@ -831,9 +940,9 @@ class SimulatorTui : public ComponentBase {
 
 }  // namespace
 
-int run_tui(Debugger& debugger, bool vertical, unsigned stages) {
+int run_tui(Debugger& debugger) {
   auto screen = ScreenInteractive::Fullscreen();
-  auto component = std::make_shared<SimulatorTui>(debugger, vertical, stages);
+  auto component = std::make_shared<SimulatorTui>(debugger);
   component->set_screen(&screen);
   screen.Loop(component);
   return 0;

@@ -31,7 +31,8 @@ class Cpu {
   explicit Cpu(std::size_t mem_words = risc201::cu::MemoryUnit::kDefaultWords,
                risc201::cu::StageLayout layout = risc201::cu::StageLayout::SIX_STAGE,
                ControlEncoding encoding = ControlEncoding::HORIZONTAL)
-      : pipe_(layout, encoding == ControlEncoding::VERTICAL, mem_words, true) {}
+      : pipe_(layout, encoding == ControlEncoding::VERTICAL, mem_words, true),
+        encoding_(encoding) {}
 
   void load(const std::vector<Word>& code) {
     pipe_.load(code, 0);
@@ -73,6 +74,19 @@ class Cpu {
   void reset() {
     pipe_.reset();
   }
+
+  // Rebuild the machine with a different stage layout and control encoding.
+  // The memory size is preserved; the loaded program is not, so callers should
+  // reload it afterwards.
+  void reconfigure(risc201::cu::StageLayout layout, ControlEncoding encoding) {
+    const std::size_t words = pipe_.mem().words();
+    pipe_ = risc201::pipeline::PipelineProcessor(
+        layout, encoding == ControlEncoding::VERTICAL, words, true);
+    encoding_ = encoding;
+  }
+
+  risc201::cu::StageLayout layout() const { return pipe_.layout(); }
+  ControlEncoding encoding() const { return encoding_; }
 
   bool halted() const { return pipe_.halted(); }
   const char* halt_reason() const {
@@ -223,6 +237,7 @@ class Cpu {
 
  private:
   risc201::pipeline::PipelineProcessor pipe_;
+  ControlEncoding encoding_ = ControlEncoding::HORIZONTAL;
 };
 
 }  // namespace risc201
